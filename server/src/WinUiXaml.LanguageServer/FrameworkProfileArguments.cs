@@ -10,6 +10,20 @@ internal static class FrameworkProfileArguments
         for (var index = 0; index < arguments.Length; index++)
         {
             var argument = arguments[index];
+            // The host launch contract supplies a workspace hint before the framework profile.
+            // The resolver discovers the owning project itself, so consume this shared argument
+            // without letting it mask a later --framework selection.
+            if (string.Equals(argument, "--workspace", StringComparison.OrdinalIgnoreCase))
+            {
+                if (++index == arguments.Length || arguments[index].StartsWith("--", StringComparison.Ordinal))
+                {
+                    writeDiagnostic?.Invoke("--workspace requires a value; defaulting to winui.");
+                    return XamlFrameworkProfile.WinUi;
+                }
+
+                continue;
+            }
+
             if (string.Equals(argument, "--framework", StringComparison.OrdinalIgnoreCase))
             {
                 if (++index == arguments.Length || arguments[index].StartsWith("--", StringComparison.Ordinal))

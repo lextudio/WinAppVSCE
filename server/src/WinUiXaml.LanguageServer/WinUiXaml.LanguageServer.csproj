@@ -21,6 +21,12 @@
     <InternalsVisibleTo Include="WinUiXaml.LanguageServer.Tests" />
   </ItemGroup>
 
+  <!-- .NET SDK 10.0.200 selects 10.0.4 by default, which has GHSA-p3jp-9v83-76w9.
+       Keep the NativeAOT compiler pack on the serviced 10.0 line until the SDK baseline moves. -->
+  <ItemGroup>
+    <KnownILCompilerPack Update="Microsoft.DotNet.ILCompiler" ILCompilerPackVersion="10.0.14" />
+  </ItemGroup>
+
   <ItemGroup>
     <ProjectReference Include="..\WinUiXaml.Xaml\WinUiXaml.Xaml.csproj" />
     <ProjectReference Include="..\WinUiXaml.Workspace\WinUiXaml.Workspace.csproj" />
