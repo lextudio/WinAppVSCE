@@ -48,6 +48,17 @@ public class LspUriTests
     }
 
     [Fact]
+    public void PosixFileUri_RemainsAPosixPathOnUnix()
+    {
+        if (OperatingSystem.IsWindows())
+        {
+            return;
+        }
+
+        Assert.Equal("/Users/nikolame/source/App.xaml", LspUri.ToPath("file:///Users/nikolame/source/App.xaml"));
+    }
+
+    [Fact]
     public void NonFileScheme_ReturnsNull()
     {
         Assert.Null(LspUri.ToPath("untitled:Untitled-1"));

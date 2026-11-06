@@ -23,11 +23,13 @@ namespace WinUiXaml.Workspace
         private const string UsingScheme = "using:";
         private const string ClrNamespaceScheme = "clr-namespace:";
 
-        // WinUI maps the presentation namespace to these CLR roots by convention.
-        private static readonly string[] PresentationRoots = { "Microsoft.UI.Xaml", "Windows.UI.Xaml" };
+        // WinUI and WPF map the presentation namespace to these CLR roots by convention.
+        private static readonly string[] WinUiPresentationRoots = { "Microsoft.UI.Xaml", "Windows.UI.Xaml" };
+        private static readonly string[] WpfPresentationRoots = { "System.Windows" };
 
         private readonly Compilation _compilation;
         private readonly ImmutableArray<IAssemblySymbol> _assemblies;
+        private readonly IReadOnlyList<string> _presentationRoots;
 
         // Walking the reference closure is expensive, so cache it per instance.
         private IReadOnlyList<string>? _referencedUsingNamespaces;
@@ -96,8 +98,10 @@ namespace WinUiXaml.Workspace
         private XamlTypeSystem(
             Compilation compilation,
             ImmutableArray<IAssemblySymbol> assemblies,
-            Dictionary<string, List<NamespaceBinding>> xmlnsMap)
+            Dictionary<string, List<NamespaceBinding>> xmlnsMap,
+            IReadOnlyList<string> presentationRoots)
         {
+            _presentationRoots = presentationRoots;
             _compilation = compilation;
             _assemblies = assemblies;
             _xmlnsMap = xmlnsMap;
@@ -108,19 +112,23 @@ namespace WinUiXaml.Workspace
         public WinUiSdkCapabilities Capabilities { get; }
 
         /// <summary>Builds a type system from a resolved XAML file's project context.</summary>
-        public static XamlTypeSystem FromResolution(XamlResolution resolution)
+        public static XamlTypeSystem FromResolution(XamlResolution resolution, XamlFrameworkProfile? profile = null)
         {
             if (resolution is null)
             {
                 throw new ArgumentNullException(nameof(resolution));
             }
 
-            return FromCompilation(resolution.Compilation, resolution.ReferencedAssemblies);
+            return FromCompilation(resolution.Compilation, resolution.ReferencedAssemblies, profile);
         }
 
         /// <summary>Builds a type system, including the compilation's own assembly.</summary>
         public static XamlTypeSystem FromCompilation(
             Compilation compilation, ImmutableArray<IAssemblySymbol> referencedAssemblies)
+            => FromCompilation(compilation, referencedAssemblies, null);
+
+        public static XamlTypeSystem FromCompilation(
+            Compilation compilation, ImmutableArray<IAssemblySymbol> referencedAssemblies, XamlFrameworkProfile? profile)
         {
             if (compilation is null)
             {
@@ -137,8 +145,9 @@ namespace WinUiXaml.Workspace
             var assemblies = builder.ToImmutable();
 
             var xmlnsMap = BuildXmlnsMap(assemblies);
-            AddConventionNamespaces(xmlnsMap, assemblies);
-            return new XamlTypeSystem(compilation, assemblies, xmlnsMap);
+            var roots = profile?.Id is "wpf" or "librewpf" ? WpfPresentationRoots : WinUiPresentationRoots;
+            AddConventionNamespaces(xmlnsMap, assemblies, roots);
+            return new XamlTypeSystem(compilation, assemblies, xmlnsMap, roots);
         }
 
         /// <summary>Resolves an element or attached-property owner to its type.</summary>
@@ -341,7 +350,7 @@ namespace WinUiXaml.Workspace
                 return _sourceElementTypes;
             }
 
-            var dependencyObject = _compilation.GetTypeByMetadataName("Microsoft.UI.Xaml.DependencyObject");
+            var dependencyObject = GetDependencyObject();
             if (dependencyObject is null)
             {
                 return _sourceElementTypes = System.Array.Empty<INamedTypeSymbol>();
@@ -364,7 +373,7 @@ namespace WinUiXaml.Workspace
                 return _referencedElementTypes;
             }
 
-            var dependencyObject = _compilation.GetTypeByMetadataName("Microsoft.UI.Xaml.DependencyObject");
+            var dependencyObject = GetDependencyObject();
             if (dependencyObject is null)
             {
                 return _referencedElementTypes = System.Array.Empty<INamedTypeSymbol>();
@@ -416,8 +425,7 @@ namespace WinUiXaml.Workspace
         /// <summary>Finds public, concrete WinUI element types with the given simple name in the project and its references.</summary>
         public IReadOnlyList<INamedTypeSymbol> FindElementTypesByName(string simpleName)
         {
-            if (string.IsNullOrEmpty(simpleName) ||
-                _compilation.GetTypeByMetadataName("Microsoft.UI.Xaml.DependencyObject") is not { } dependencyObject)
+            if (string.IsNullOrEmpty(simpleName) || GetDependencyObject() is not { } dependencyObject)
             {
                 return System.Array.Empty<INamedTypeSymbol>();
             }
@@ -1451,6 +1459,10 @@ namespace WinUiXaml.Workspace
             type.TypeKind == TypeKind.Class &&
             !type.IsStatic;
 
+        private INamedTypeSymbol? GetDependencyObject() =>
+            _compilation.GetTypeByMetadataName("Microsoft.UI.Xaml.DependencyObject") ??
+            _compilation.GetTypeByMetadataName("System.Windows.DependencyObject");
+
         private bool IsUsableType(INamedTypeSymbol type) =>
             IsAccessibleTopLevelType(
                 type,
@@ -1520,7 +1532,7 @@ namespace WinUiXaml.Workspace
 
         /// <summary>Adds the WinUI presentation-namespace convention mapping when the referenced assemblies carry no XmlnsDefinitionAttribute for it (the common case).</summary>
         private static void AddConventionNamespaces(
-            Dictionary<string, List<NamespaceBinding>> map, ImmutableArray<IAssemblySymbol> assemblies)
+            Dictionary<string, List<NamespaceBinding>> map, ImmutableArray<IAssemblySymbol> assemblies, IReadOnlyList<string> roots)
         {
             if (map.ContainsKey(PresentationNamespace))
             {
@@ -1530,7 +1542,7 @@ namespace WinUiXaml.Workspace
             var bindings = new List<NamespaceBinding>();
             foreach (var asm in assemblies)
             {
-                foreach (var root in PresentationRoots)
+                foreach (var root in roots)
                 {
                     var rootNs = ResolveNamespace(asm.GlobalNamespace, root);
                     if (rootNs is null)

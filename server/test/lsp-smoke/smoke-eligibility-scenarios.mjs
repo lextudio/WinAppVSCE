@@ -34,7 +34,7 @@ export async function runEligibilityScenarios({
     const uri = pathToFileURL(file).href;
     const unsupported = waitFor(
       message => message.method === "winui-xaml/projectContextStatus" &&
-        message.params?.uri === uri && message.params?.state === "winui-required",
+        message.params?.uri === uri && message.params?.state === "framework-required",
       30000, `${sample.name} eligibility`);
     send({ method: "textDocument/didOpen", params: { textDocument: { uri, languageId: "xaml", version: 1, text } } });
     const status = await unsupported;
@@ -77,7 +77,7 @@ export async function runEligibilityScenarios({
   const statusIs = state => message =>
     message.method === "winui-xaml/projectContextStatus" &&
     message.params?.uri === fixtureUri && message.params?.state === state;
-  const rejected = waitFor(statusIs("winui-required"), 30000, "previously eligible project rejected");
+  const rejected = waitFor(statusIs("framework-required"), 30000, "previously eligible project rejected");
   try {
     writeFileSync(fixtureProject, disabledProject);
     changed();

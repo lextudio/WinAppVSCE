@@ -237,6 +237,12 @@
           "default": true,
           "description": "Enable the WinUI XAML language server, including completion, hover, diagnostics, navigation, formatting, and other project-aware editor features."
         },
+        "winapp.xaml.framework": {
+          "type": "string",
+          "enum": ["winui", "uno", "wpf", "librewpf", "progpu"],
+          "default": "winui",
+          "description": "XAML runtime profile passed to the language server."
+        },
         "winapp.xaml.diagnostics.level": {
           "type": "string",
           "enum": ["all", "errorsOnly", "off"],

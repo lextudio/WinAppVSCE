@@ -12,18 +12,18 @@ namespace WinUiXaml.Workspace
     /// <summary>Fast first-stage reference resolver for <c>ResolveFrameworkAsync</c>, using out-of-process MSBuild data without parsing sources or running generators.</summary>
     internal sealed class MsBuildFrameworkProject
     {
-        private const string WinUiSentinel = "Microsoft.UI.Xaml.Controls.Button";
-
         private MsBuildFrameworkProject(
             Compilation compilation,
             ImmutableArray<string> xamlFiles,
             string? applicationDefinitionPath,
-            ImmutableArray<string> unresolvedProjectReferences)
+            ImmutableArray<string> unresolvedProjectReferences,
+            bool usesMinimalMetadataFallback)
         {
             Compilation = compilation;
             XamlFiles = xamlFiles;
             ApplicationDefinitionPath = applicationDefinitionPath;
             UnresolvedProjectReferences = unresolvedProjectReferences;
+            UsesMinimalMetadataFallback = usesMinimalMetadataFallback;
         }
 
         internal Compilation Compilation { get; }
@@ -33,8 +33,12 @@ namespace WinUiXaml.Workspace
         /// <summary>Referenced projects that had never been built when this project loaded.</summary>
         internal ImmutableArray<string> UnresolvedProjectReferences { get; }
 
+        /// <summary>Whether this resolution contains the profile's intentionally synthetic design-host metadata.</summary>
+        internal bool UsesMinimalMetadataFallback { get; }
+
         internal static MsBuildFrameworkProject? Load(
             string projectPath,
+            XamlFrameworkProfile profile,
             IReadOnlyDictionary<string, string> globalProperties,
             CancellationToken cancellationToken = default)
         {
@@ -76,9 +80,57 @@ namespace WinUiXaml.Workspace
                 references: references,
                 options: new CSharpCompilationOptions(OutputKind.DynamicallyLinkedLibrary));
 
-            // Without the WinUI closure this stage cannot answer the questions it exists for, so
-            // the caller is told to fall back rather than being handed a misleading compilation.
-            if (compilation.GetTypeByMetadataName(WinUiSentinel) is null)
+            // Design-host fixtures intentionally omit a framework closure. They get only the
+            // small profile-specific surface below; ordinary projects must still supply real
+            // metadata or this stage declines to answer.
+            var usesMinimalMetadataFallback = compilation.GetTypeByMetadataName(profile.SentinelMetadataName) is null &&
+                profile.AllowsMinimalMetadataFallback &&
+                ((profile.Id == "winui" && evaluation.PackageReferences.IsDefaultOrEmpty) ||
+                 evaluation.IsProGpuWinUiProject ||
+                 evaluation.AllowsMinimalMetadataFallback);
+            if (usesMinimalMetadataFallback)
+            {
+                compilation = compilation.AddSyntaxTrees(CSharpSyntaxTree.ParseText(profile.Id is "wpf" or "librewpf" ? """
+                    namespace System.Windows
+                    {
+                        public class DependencyObject { }
+                        public class UIElement : DependencyObject { }
+                        public class FrameworkElement : UIElement { }
+                        public class Window : FrameworkElement
+                        {
+                            public UIElement? Content { get; set; }
+                        }
+                    }
+                    namespace System.Windows.Controls
+                    {
+                        public class Grid : System.Windows.FrameworkElement { }
+                        public class StackPanel : System.Windows.FrameworkElement { }
+                        public class TextBlock : System.Windows.FrameworkElement { }
+                        public class Button : System.Windows.FrameworkElement { }
+                    }
+                    """ : """
+                    namespace Microsoft.UI.Xaml
+                    {
+                        public class DependencyObject { }
+                        public class UIElement : DependencyObject { }
+                        public class FrameworkElement : UIElement { }
+                        public class FrameworkTemplate { }
+                    }
+                    namespace Microsoft.UI.Xaml.Controls
+                    {
+                        public class Page : Microsoft.UI.Xaml.FrameworkElement
+                        {
+                            public Microsoft.UI.Xaml.UIElement? Content { get; set; }
+                        }
+                        public class Grid : Microsoft.UI.Xaml.FrameworkElement { }
+                        public class StackPanel : Microsoft.UI.Xaml.FrameworkElement { }
+                        public class TextBlock : Microsoft.UI.Xaml.FrameworkElement { }
+                        public class Button : Microsoft.UI.Xaml.FrameworkElement { }
+                    }
+                    """));
+            }
+
+            if (compilation.GetTypeByMetadataName(profile.SentinelMetadataName) is null)
             {
                 return null;
             }
@@ -89,7 +141,14 @@ namespace WinUiXaml.Workspace
                 evaluation.ApplicationDefinition,
                 // This stage does not build project references, so only the full stage can report
                 // build-required from what it actually observed.
-                ImmutableArray<string>.Empty);
+                ImmutableArray<string>.Empty,
+                usesMinimalMetadataFallback);
         }
+
+        internal static MsBuildFrameworkProject? Load(
+            string projectPath,
+            IReadOnlyDictionary<string, string> globalProperties,
+            CancellationToken cancellationToken = default) =>
+            Load(projectPath, XamlFrameworkProfile.WinUi, globalProperties, cancellationToken);
     }
 }

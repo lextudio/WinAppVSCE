@@ -14,6 +14,7 @@ export const PROJECT_CONTEXT_STATES = [
   "dotnet-sdk-required",
   "syntax-only",
   "winui-required",
+  "framework-required",
   "idle",
 ] as const;
 
@@ -88,6 +89,7 @@ const DURABLE_STATES: readonly ProjectContextState[] = [
   "dotnet-sdk-required",
   "syntax-only",
   "winui-required",
+  "framework-required",
 ];
 
 /** Decides whether incoming status replaces current; suppresses transient reload `loading` over durable states while still accepting real recovery states immediately. */
@@ -123,6 +125,7 @@ const PROJECT_CONTEXT_PRIORITY: Record<
   ready: 7,
   "syntax-only": 8,
   "winui-required": 8,
+  "framework-required": 8,
 };
 
 export function selectProjectContextStatus(
@@ -157,8 +160,9 @@ export function getProjectContextStatusPresentation(
 ): ProjectContextStatusPresentation | undefined {
   switch (status.state) {
     case "winui-required":
+    case "framework-required":
       return {
-        text: "$(info) WinApp: WinUI 3 Required for XAML IntelliSense",
+        text: "$(info) WinApp: XAML Framework Required for IntelliSense",
         tooltip:
           `${status.message ?? PROJECT_CONTEXT_WINUI_REQUIRED_MESSAGE} ` +
           "Formatting, folding, outline, closing-tag completion, document links, and syntax diagnostics remain available.",

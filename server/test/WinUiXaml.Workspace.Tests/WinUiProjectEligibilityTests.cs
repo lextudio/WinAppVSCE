@@ -43,6 +43,14 @@ public sealed class WinUiProjectEligibilityTests
     public void OnlyKnownProjectSdkShapesQualify(string xml, bool expected) =>
         Assert.Equal(expected, WinUiProjectEligibility.HasSupportedSdk(XElement.Parse(xml)));
 
+    [Theory]
+    [InlineData("<Project Sdk='Microsoft.NET.Sdk'/>", true)]
+    [InlineData("<Project Sdk='Uno.Sdk'/>", true)]
+    [InlineData("<Project Sdk='Microsoft.NET.Sdk.WindowsDesktop'/>", false)]
+    [InlineData("<Project Sdk='Future.Xaml.Sdk'/>", false)]
+    public void UnoProfileRecognizesUnoSdkShapes(string xml, bool expected) =>
+        Assert.Equal(expected, XamlFrameworkProfile.Uno.HasSupportedSdk(XElement.Parse(xml)));
+
     [Fact]
     public async Task EvaluatesImportsAndSelectedFrameworkWithoutRestoreOrBuildAndInvalidatesEligibility()
     {
@@ -81,6 +89,164 @@ public sealed class WinUiProjectEligibilityTests
     }
 
     [Fact]
+    public void EvaluatesAWindowsTargetOnAnyHost()
+    {
+        var root = Path.Combine(Path.GetTempPath(), "winui-windows-target-" + Guid.NewGuid().ToString("N"));
+        Directory.CreateDirectory(root);
+        try
+        {
+            var project = Path.Combine(root, "Example.csproj");
+            File.WriteAllText(project, """
+                <Project Sdk="Microsoft.NET.Sdk">
+                  <PropertyGroup>
+                    <TargetFramework>net10.0-windows10.0.19041.0</TargetFramework>
+                    <UseWinUI>true</UseWinUI>
+                  </PropertyGroup>
+                  <ItemGroup><PackageReference Include="Microsoft.WindowsAppSDK" Version="1.8.0" /></ItemGroup>
+                </Project>
+                """);
+
+            var evaluation = MsBuildCli.Evaluate(project, new Dictionary<string, string>());
+
+            Assert.True(evaluation.IsWinUiProject);
+        }
+        finally
+        {
+            Directory.Delete(root, recursive: true);
+        }
+    }
+
+    [Fact]
+    public void UnoProfileAcceptsUnoWinUiWithoutAcceptingProGpu()
+    {
+        var root = Path.Combine(Path.GetTempPath(), "uno-eligibility-" + Guid.NewGuid().ToString("N"));
+        Directory.CreateDirectory(root);
+        try
+        {
+            var project = Path.Combine(root, "Uno.csproj");
+            File.WriteAllText(project, """
+                <Project Sdk="Microsoft.NET.Sdk">
+                  <PropertyGroup><TargetFramework>net10.0</TargetFramework></PropertyGroup>
+                  <ItemGroup><PackageReference Include="Uno.WinUI" Version="5.0.0" ExcludeAssets="all" /></ItemGroup>
+                </Project>
+                """);
+
+            Assert.True(WinUiProjectEligibility.Evaluate(
+                XamlFrameworkProfile.Uno, project, new Dictionary<string, string>(), CancellationToken.None));
+
+            File.WriteAllText(project, """
+                <Project Sdk="Microsoft.NET.Sdk">
+                  <PropertyGroup><TargetFramework>net10.0</TargetFramework><UseProGpuWinUI>true</UseProGpuWinUI></PropertyGroup>
+                  <ItemGroup><PackageReference Include="Uno.WinUI" Version="5.0.0" ExcludeAssets="all" /></ItemGroup>
+                </Project>
+                """);
+            Assert.False(WinUiProjectEligibility.Evaluate(
+                XamlFrameworkProfile.Uno, project, new Dictionary<string, string>(), CancellationToken.None));
+        }
+        finally
+        {
+            Directory.Delete(root, recursive: true);
+        }
+    }
+
+    [Fact]
+    public async Task UnoProfileResolvesControlsFromTheUnoSdkReferenceClosure()
+    {
+        var repositoryRoot = FindOpenDevelopRoot();
+        if (repositoryRoot is null) return;
+        var project = Path.Combine(repositoryRoot, "src", "Samples", "UnoXamlSample", "UnoXamlSample.csproj");
+        var page = Path.Combine(repositoryRoot, "src", "Samples", "UnoXamlSample", "MainPage.xaml");
+
+        Assert.True(File.Exists(project), $"Expected the OpenDevelop Uno sample at '{project}'.");
+        Assert.True(File.Exists(page), $"Expected the OpenDevelop Uno page at '{page}'.");
+
+        using var resolver = new XamlProjectResolver(XamlFrameworkProfile.Uno);
+        var resolution = await resolver.ResolveFrameworkAsync(page);
+        Assert.NotNull(resolution);
+        Assert.NotNull(resolution!.Compilation.GetTypeByMetadataName("Microsoft.UI.Xaml.Controls.Grid"));
+        var typeSystem = XamlTypeSystem.FromResolution(resolution);
+        Assert.Contains(typeSystem.GetTypes(XamlTypeSystem.PresentationNamespace),
+            type => type.ToDisplayString() == "Microsoft.UI.Xaml.Controls.Grid");
+
+        var fullResolution = await resolver.ResolveAsync(page);
+        Assert.NotNull(fullResolution);
+        var fullTypeSystem = XamlTypeSystem.FromResolution(fullResolution!);
+        Assert.Contains(fullTypeSystem.GetTypes(XamlTypeSystem.PresentationNamespace),
+            type => type.ToDisplayString() == "Microsoft.UI.Xaml.Controls.Grid");
+    }
+
+    [Fact]
+    public async Task WinUiProfileProvidesMinimalControlsForTheDeliberateNoPackageFixture()
+    {
+        var repositoryRoot = FindOpenDevelopRoot();
+        if (repositoryRoot is null) return;
+        var project = Path.Combine(repositoryRoot, "src", "Samples", "MicrosoftWinUISample", "MicrosoftWinUISample.csproj");
+        var page = Path.Combine(repositoryRoot, "src", "Samples", "MicrosoftWinUISample", "MainPage.xaml");
+
+        using var resolver = new XamlProjectResolver(XamlFrameworkProfile.WinUi);
+        Assert.True(await resolver.IsSupportedProjectAsync(project));
+        var resolution = await resolver.ResolveFrameworkAsync(page);
+        Assert.NotNull(resolution);
+        Assert.NotNull(resolution!.Compilation.GetTypeByMetadataName("Microsoft.UI.Xaml.Controls.Grid"));
+        Assert.Contains(XamlTypeSystem.FromResolution(resolution, XamlFrameworkProfile.WinUi).GetTypes(XamlTypeSystem.PresentationNamespace),
+            type => type.ToDisplayString() == "Microsoft.UI.Xaml.Controls.Grid");
+        Assert.DoesNotContain(XamlTypeSystem.FromResolution(resolution, XamlFrameworkProfile.Wpf).GetTypes(XamlTypeSystem.PresentationNamespace),
+            type => type.ToDisplayString() == "Microsoft.UI.Xaml.Controls.Grid");
+    }
+
+    [Fact]
+    public async Task WpfProfileResolvesTheMicrosoftWpfSampleWithoutWindowsDesktopMetadata()
+    {
+        var repositoryRoot = FindOpenDevelopRoot();
+        if (repositoryRoot is null) return;
+        var project = Path.Combine(repositoryRoot, "src", "Samples", "MicrosoftWpfSample", "MicrosoftWpfSample.csproj");
+        var page = Path.Combine(repositoryRoot, "src", "Samples", "MicrosoftWpfSample", "MainWindow.xaml");
+
+        using var resolver = new XamlProjectResolver(XamlFrameworkProfile.Wpf);
+        Assert.True(await resolver.IsSupportedProjectAsync(project));
+        var resolution = await resolver.ResolveFrameworkAsync(page);
+        Assert.NotNull(resolution);
+        Assert.NotNull(resolution!.Compilation.GetTypeByMetadataName("System.Windows.Controls.Grid"));
+        Assert.NotNull(resolution.Compilation.GetTypeByMetadataName("System.Windows.Controls.Border"));
+        Assert.Contains(XamlTypeSystem.FromResolution(resolution, XamlFrameworkProfile.LibreWpf).GetTypes(XamlTypeSystem.PresentationNamespace),
+            type => type.ToDisplayString() == "System.Windows.Controls.Grid");
+    }
+
+    [Fact]
+    public async Task LibreWpfProfileResolvesControlsFromTheLibreWpfReferenceClosure()
+    {
+        var repositoryRoot = FindOpenDevelopRoot();
+        if (repositoryRoot is null) return;
+        var project = Path.Combine(repositoryRoot, "src", "Samples", "LibreWpfSample", "sample.csproj");
+        var page = Path.Combine(repositoryRoot, "src", "Samples", "LibreWpfSample", "MainWindow.xaml");
+
+        using var resolver = new XamlProjectResolver(XamlFrameworkProfile.LibreWpf);
+        Assert.True(await resolver.IsSupportedProjectAsync(project));
+        var resolution = await resolver.ResolveFrameworkAsync(page);
+        Assert.NotNull(resolution);
+        Assert.NotNull(resolution!.Compilation.GetTypeByMetadataName("System.Windows.Controls.Grid"));
+        Assert.Contains(XamlTypeSystem.FromResolution(resolution).GetTypes(XamlTypeSystem.PresentationNamespace),
+            type => type.ToDisplayString() == "System.Windows.Controls.Grid");
+    }
+
+    [Fact]
+    public async Task ProGpuProfileProvidesMinimalWinUiControlsForTheProGpuFixture()
+    {
+        var repositoryRoot = FindOpenDevelopRoot();
+        if (repositoryRoot is null) return;
+        var project = Path.Combine(repositoryRoot, "src", "Samples", "ProGpuWinUISample", "ProGpuWinUISample.csproj");
+        var page = Path.Combine(repositoryRoot, "src", "Samples", "ProGpuWinUISample", "MainPage.xaml");
+
+        using var resolver = new XamlProjectResolver(XamlFrameworkProfile.ProGpu);
+        Assert.True(await resolver.IsSupportedProjectAsync(project));
+        var resolution = await resolver.ResolveFrameworkAsync(page);
+        Assert.NotNull(resolution);
+        Assert.NotNull(resolution!.Compilation.GetTypeByMetadataName("Microsoft.UI.Xaml.Controls.Grid"));
+        Assert.Contains(XamlTypeSystem.FromResolution(resolution).GetTypes(XamlTypeSystem.PresentationNamespace),
+            type => type.ToDisplayString() == "Microsoft.UI.Xaml.Controls.Grid");
+    }
+
+    [Fact]
     public void UnknownSdkIsRejectedWithoutResolvingOrExecutingIt()
     {
         var root = Path.Combine(Path.GetTempPath(), "winui-unknown-sdk-" + Guid.NewGuid().ToString("N"));
@@ -101,5 +267,21 @@ public sealed class WinUiProjectEligibilityTests
         {
             Directory.Delete(root, recursive: true);
         }
+    }
+
+    private static string? FindOpenDevelopRoot()
+    {
+        var directory = new DirectoryInfo(AppContext.BaseDirectory);
+        while (directory is not null)
+        {
+            if (File.Exists(Path.Combine(directory.FullName, "OpenDevelop.Mvp.slnx")))
+            {
+                return directory.FullName;
+            }
+
+            directory = directory.Parent;
+        }
+
+        return null;
     }
 }

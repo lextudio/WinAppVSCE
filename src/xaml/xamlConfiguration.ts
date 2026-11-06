@@ -149,12 +149,12 @@ export function getXamlStatus(
         actions: [XAML_STATUS_ACTIONS.showOutput],
       };
     }
-    if (projectContext?.state === "syntax-only" || projectContext?.state === "winui-required") {
+    if (projectContext?.state === "syntax-only" || projectContext?.state === "winui-required" || projectContext?.state === "framework-required") {
       return {
         message:
           `${XAML_STATUS_PREFIX} ${
             projectContext.message ??
-            (projectContext.state === "winui-required"
+            (projectContext.state === "winui-required" || projectContext.state === "framework-required"
               ? PROJECT_CONTEXT_WINUI_REQUIRED_MESSAGE
               : "This document uses syntax-only XAML editing; project types are not loaded.")
           }`,

@@ -15,6 +15,13 @@ public static class WinUiProjectEligibility
 
     internal static bool Evaluate(
         string projectPath, IReadOnlyDictionary<string, string> properties, CancellationToken cancellationToken)
+        => Evaluate(XamlFrameworkProfile.WinUi, projectPath, properties, cancellationToken);
+
+    internal static bool Evaluate(
+        XamlFrameworkProfile profile,
+        string projectPath,
+        IReadOnlyDictionary<string, string> properties,
+        CancellationToken cancellationToken)
     {
         try
         {
@@ -23,7 +30,7 @@ public static class WinUiProjectEligibility
                 DtdProcessing = DtdProcessing.Prohibit,
                 XmlResolver = null,
             });
-            if (!HasSupportedSdk(XDocument.Load(reader).Root))
+            if (!profile.HasSupportedSdk(XDocument.Load(reader).Root))
             {
                 return false;
             }
@@ -36,7 +43,7 @@ public static class WinUiProjectEligibility
                 pinned["TargetFramework"] = framework;
                 evaluation = MsBuildCli.Evaluate(projectPath, pinned, cancellationToken);
             }
-            return evaluation.IsWinUiProject;
+            return profile.IsEligible(evaluation);
         }
         catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or XmlException ||
             ex is MsBuildUnavailableException { HostMissing: false })
@@ -47,20 +54,5 @@ public static class WinUiProjectEligibility
     }
 
     internal static bool HasSupportedSdk(XElement? project)
-    {
-        if (project?.Name.LocalName != "Project")
-        {
-            return false;
-        }
-        var sdks = new[] { (string?)project.Attribute("Sdk") }
-            .Concat(project.Elements().Select(element => element.Name.LocalName == "Sdk"
-                ? (string?)element.Attribute("Name") : (string?)element.Attribute("Sdk")))
-            .Where(value => !string.IsNullOrWhiteSpace(value))
-            .SelectMany(value => value!.Split(';', StringSplitOptions.RemoveEmptyEntries))
-            .Select(value => value.Trim().Split('/')[0])
-            .ToArray();
-        return sdks.Length > 0 && sdks.All(sdk =>
-            sdk.Equals("Microsoft.NET.Sdk", StringComparison.OrdinalIgnoreCase) ||
-            sdk.Equals("Microsoft.NET.Sdk.WindowsDesktop", StringComparison.OrdinalIgnoreCase));
-    }
+        => XamlFrameworkProfile.WinUi.HasSupportedSdk(project);
 }

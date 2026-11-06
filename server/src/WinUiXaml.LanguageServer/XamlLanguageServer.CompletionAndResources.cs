@@ -368,7 +368,7 @@ internal sealed partial class XamlLanguageServer
                 if (!await _resolver.IsSupportedProjectAsync(projectPath, cancellationToken).ConfigureAwait(false))
                 {
                     _syntaxOnlyDocuments[uri] = 0;
-                    await NotifyProjectContextStatusAsync(uri, "winui-required", WinUiProjectEligibility.RequiredMessage)
+                    await NotifyProjectContextStatusAsync(uri, "framework-required", _resolver.Profile.RequiredMessage)
                         .ConfigureAwait(false);
                     return null;
                 }
@@ -464,7 +464,7 @@ internal sealed partial class XamlLanguageServer
             ? latestContext.TypeSystem
             : _typeSystems.GetValue(
                 frameworkResolution.Compilation,
-                _ => XamlTypeSystem.FromResolution(frameworkResolution));
+                _ => XamlTypeSystem.FromResolution(frameworkResolution, _resolver.Profile));
         var frameworkContext = new XamlProjectContext(
             frameworkResolution,
             frameworkTypeSystem,
@@ -502,6 +502,15 @@ internal sealed partial class XamlLanguageServer
             return null;
         }
 
+        // A deliberate no-package WinUI design-host project has only the profile's minimal
+        // metadata fallback. The full source-project path cannot recreate that synthetic
+        // reference closure, so retain the already-published framework context instead of
+        // replacing useful element completion with an empty type system.
+        if (frameworkResolution.UsesMinimalMetadataFallback)
+        {
+            return frameworkContext;
+        }
+
         // Full resolution proves unresolvable references. IntelliSense still works, but generated
         // members are missing, so prompt once per project instead of leaving a silent partial outage.
         if (!fullResolution.UnresolvedProjectReferences.IsDefaultOrEmpty)
@@ -533,7 +542,7 @@ internal sealed partial class XamlLanguageServer
 
         var fullTypeSystem = _typeSystems.GetValue(
             fullResolution.Compilation,
-            _ => XamlTypeSystem.FromResolution(fullResolution));
+            _ => XamlTypeSystem.FromResolution(fullResolution, _resolver.Profile));
         _projectInputs.Register(
             fullResolution.ProjectPath,
             fullResolution.ProjectPaths,

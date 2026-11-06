@@ -52,7 +52,12 @@ namespace WinUiXaml.Workspace
                 string? targetFrameworks = null,
                 string? customAfterCSharpTargets = null,
                 ImmutableArray<ResolvedProjectReference> resolvedProjectReferences = default,
-                bool isWinUiProject = false)
+                bool isWinUiProject = false,
+                bool useWinUi = false,
+                bool useWpf = false,
+                bool isProGpuWinUiProject = false,
+                bool allowsMinimalMetadataFallback = false,
+                ImmutableArray<string> packageReferences = default)
             {
                 XamlFiles = xamlFiles;
                 ApplicationDefinition = applicationDefinition;
@@ -64,6 +69,11 @@ namespace WinUiXaml.Workspace
                 CustomAfterCSharpTargets = customAfterCSharpTargets;
                 ResolvedProjectReferences = resolvedProjectReferences;
                 IsWinUiProject = isWinUiProject;
+                UseWinUi = useWinUi;
+                UseWpf = useWpf;
+                IsProGpuWinUiProject = isProGpuWinUiProject;
+                AllowsMinimalMetadataFallback = allowsMinimalMetadataFallback;
+                PackageReferences = packageReferences;
             }
 
             public ImmutableArray<string> XamlFiles { get; }
@@ -73,6 +83,11 @@ namespace WinUiXaml.Workspace
             public ImmutableArray<string> ProjectReferences { get; }
             public ImmutableArray<ResolvedProjectReference> ResolvedProjectReferences { get; }
             public bool IsWinUiProject { get; }
+            public bool UseWinUi { get; }
+            public bool UseWpf { get; }
+            public bool IsProGpuWinUiProject { get; }
+            public bool AllowsMinimalMetadataFallback { get; }
+            public ImmutableArray<string> PackageReferences { get; }
             public string? AssemblyName { get; }
 
             /// <summary>The project's semicolon-separated <c>TargetFrameworks</c>, or null for a single framework; non-null means an outer build with no <c>Compile</c> target.</summary>
@@ -345,6 +360,7 @@ namespace WinUiXaml.Workspace
                 // remove-list, so a referenced project never sees it and is built normally.
                 arguments.Add("-p:WinUiXamlDesignTimeRoot=true");
             }
+            AppendHostCompatibilityProperties(arguments);
             AppendEvaluationRequests(arguments);
             AppendProperties(arguments, globalProperties);
 
@@ -392,6 +408,7 @@ namespace WinUiXaml.Workspace
                 fullPath,
                 "-nologo",
             };
+            AppendHostCompatibilityProperties(arguments);
             AppendEvaluationRequests(arguments);
             AppendProperties(arguments, globalProperties);
 
@@ -419,6 +436,7 @@ namespace WinUiXaml.Workspace
                 "-p:BuildingInsideVisualStudio=true",
                 "-getItem:Compile",
             };
+            AppendHostCompatibilityProperties(arguments);
             AppendEvaluationRequests(arguments);
             AppendProperties(arguments, globalProperties);
 
@@ -540,6 +558,9 @@ namespace WinUiXaml.Workspace
             arguments.Add("-getProperty:TargetFrameworks");
             arguments.Add("-getProperty:CustomAfterMicrosoftCSharpTargets");
             arguments.Add("-getProperty:UseWinUI");
+            arguments.Add("-getProperty:UseWPF");
+            arguments.Add("-getProperty:UseProGpuWinUI");
+            arguments.Add("-getProperty:UseXamlLanguageServerMinimalMetadataFallback");
             arguments.Add("-getProperty:TargetPlatformIdentifier");
         }
 
@@ -575,7 +596,12 @@ namespace WinUiXaml.Workspace
                 ReadProperty(root, "TargetFrameworks"),
                 ReadProperty(root, "CustomAfterMicrosoftCSharpTargets"),
                 ReadResolvedProjectReferences(root, projectDirectory, globalProperties),
-                IsWinUiEvaluation(root));
+                IsWinUiEvaluation(root),
+                string.Equals(ReadProperty(root, "UseWinUI"), "true", StringComparison.OrdinalIgnoreCase),
+                string.Equals(ReadProperty(root, "UseWPF"), "true", StringComparison.OrdinalIgnoreCase),
+                string.Equals(ReadProperty(root, "UseProGpuWinUI"), "true", StringComparison.OrdinalIgnoreCase),
+                string.Equals(ReadProperty(root, "UseXamlLanguageServerMinimalMetadataFallback"), "true", StringComparison.OrdinalIgnoreCase),
+                ReadItemIdentities(root, "PackageReference"));
         }
 
         internal static bool IsWinUiEvaluation(JsonElement root) =>
@@ -665,6 +691,19 @@ namespace WinUiXaml.Workspace
                 }
 
                 arguments.Add($"-p:{pair.Key}={pair.Value}");
+            }
+        }
+
+        /// <summary>
+        /// A WinUI project targets Windows even when the language server itself runs on macOS or
+        /// Linux. The SDK rejects MSBuild evaluation on those hosts without this opt-in; the
+        /// project is inspected as metadata and is never launched there.
+        /// </summary>
+        private static void AppendHostCompatibilityProperties(List<string> arguments)
+        {
+            if (!OperatingSystem.IsWindows())
+            {
+                arguments.Add("-p:EnableWindowsTargeting=true");
             }
         }
 

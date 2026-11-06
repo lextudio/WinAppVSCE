@@ -537,6 +537,7 @@ async function doStart(context: vscode.ExtensionContext, userInitiated = false):
   }
 
   const xamlConfiguration = vscode.workspace.getConfiguration(XAML_SETTINGS_SECTION);
+  const frameworkProfile = xamlConfiguration.get<string>("framework", "winui");
   const configuredDiagnosticsLevel = xamlConfiguration.get<unknown>(
     DIAGNOSTICS_LEVEL_KEY,
     "all"
@@ -627,7 +628,7 @@ async function doStart(context: vscode.ExtensionContext, userInitiated = false):
   const dotnet = resolveDotnetCommand(process.env, log);
 
   let command = serverPath;
-  let args: string[] = [];
+  let args: string[] = ["--framework", frameworkProfile];
   if (!isNativeServer) {
     if (dotnet === undefined) {
       notifyDegraded(
@@ -640,7 +641,7 @@ async function doStart(context: vscode.ExtensionContext, userInitiated = false):
       return;
     }
     command = dotnet;
-    args = [serverPath];
+    args = [serverPath, "--framework", frameworkProfile];
   }
 
   log(

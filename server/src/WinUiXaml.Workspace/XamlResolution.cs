@@ -18,7 +18,8 @@ namespace WinUiXaml.Workspace
             ImmutableArray<string> unresolvedProjectReferences = default,
             string? generatorFailure = null,
             ImmutableHashSet<string>? projectPaths = null,
-            ImmutableHashSet<string>? generatorInputFiles = null)
+            ImmutableHashSet<string>? generatorInputFiles = null,
+            bool usesMinimalMetadataFallback = false)
         {
             XamlPath = xamlPath;
             ProjectPath = projectPath;
@@ -34,6 +35,7 @@ namespace WinUiXaml.Workspace
             UnresolvedProjectReferences = unresolvedProjectReferences.IsDefault
                 ? ImmutableArray<string>.Empty
                 : unresolvedProjectReferences;
+            UsesMinimalMetadataFallback = usesMinimalMetadataFallback;
         }
 
         /// <summary>Absolute, normalized path to the <c>.xaml</c> file.</summary>
@@ -65,6 +67,9 @@ namespace WinUiXaml.Workspace
         /// </summary>
         public ImmutableArray<string> UnresolvedProjectReferences { get; }
 
+        /// <summary>Whether the framework stage deliberately supplied synthetic design-host metadata.</summary>
+        public bool UsesMinimalMetadataFallback { get; }
+
         /// <summary>
         /// Non-null when the generator host could not run, so <c>{x:Bind}</c> and completion are missing generated members even though every other symbol resolved.
         /// </summary>
@@ -90,6 +95,7 @@ namespace WinUiXaml.Workspace
                 UnresolvedProjectReferences,
                 GeneratorFailure,
                 ProjectPaths,
-                GeneratorInputFiles);
+                GeneratorInputFiles,
+                UsesMinimalMetadataFallback);
     }
 }

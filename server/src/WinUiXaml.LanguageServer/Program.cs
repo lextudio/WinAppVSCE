@@ -10,7 +10,9 @@ using var stdin = Console.OpenStandardInput();
 using var stdout = Console.OpenStandardOutput();
 
 var connection = new JsonRpcConnection(stdin, stdout);
-using var resolver = new XamlProjectResolver();
+using var resolver = new XamlProjectResolver(FrameworkProfileArguments.Parse(
+    args,
+    message => Console.Error.WriteLine($"[winui-xaml-ls] {message}")));
 var server = new XamlLanguageServer(connection, resolver);
 
 Console.Error.WriteLine("[winui-xaml-ls] ready");

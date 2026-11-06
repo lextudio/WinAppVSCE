@@ -57,7 +57,7 @@ internal static partial class CompletionProvider
                 Label = type.Name,
                 Kind = CompletionItemKind.Class,
                 Documentation = CompletionDoc(type),
-                Detail = type.ContainingNamespace?.ToDisplayString(),
+                Detail = type.ToDisplayString(),
                 TextEdit = new TextEdit { Range = replaceRange, NewText = insert },
                 FilterText = type.Name,
                 SortText = type.Name,
@@ -100,6 +100,10 @@ internal static partial class CompletionProvider
             AddProjectElementTypes(doc, items, seen, local, uri, scope, typeSystem, replaceRange, contentType);
         }
 
+        // XmlnsDefinitionAttribute order is framework-specific. Uno lists the broad
+        // Microsoft.UI.Xaml mapping before Microsoft.UI.Xaml.Controls; clients which cap a
+        // completion response would otherwise never show common controls such as Grid.
+        items.Sort((left, right) => string.Compare(left.SortText ?? left.Label, right.SortText ?? right.Label, StringComparison.Ordinal));
         return Finish(items);
     }
 
@@ -1168,7 +1172,7 @@ internal static partial class CompletionProvider
                 Label = type.Name,
                 Kind = TypeCompletionKind(type),
                 Documentation = CompletionDoc(type),
-                Detail = type.ContainingNamespace?.ToDisplayString(),
+                Detail = type.ToDisplayString(),
                 TextEdit = new TextEdit { Range = replaceRange, NewText = insert },
                 FilterText = type.Name,
                 SortText = type.Name,

@@ -31,6 +31,7 @@ namespace WinUiXaml.Workspace
             new Dictionary<string, Task<MsBuildFrameworkProject?>>(StringComparer.OrdinalIgnoreCase);
         private readonly Dictionary<string, Task<bool>> _eligibleProjects = new(StringComparer.OrdinalIgnoreCase);
         private readonly IReadOnlyDictionary<string, string> _globalProperties;
+        private readonly XamlFrameworkProfile _profile;
 
         /// <summary>Cancelled on dispose so resolver-owned loads stop their MSBuild and generator-host children instead of outliving the server.</summary>
         private readonly CancellationTokenSource _shutdown = new CancellationTokenSource();
@@ -38,10 +39,20 @@ namespace WinUiXaml.Workspace
         private readonly HashSet<Task> _pendingLoads = new();
         private Task _draining = Task.CompletedTask;
 
-        public XamlProjectResolver(IReadOnlyDictionary<string, string>? globalProperties = null)
+        public XamlProjectResolver(
+            XamlFrameworkProfile? profile = null,
+            IReadOnlyDictionary<string, string>? globalProperties = null)
         {
+            _profile = profile ?? XamlFrameworkProfile.WinUi;
             _globalProperties = globalProperties ?? DefaultGlobalProperties;
         }
+
+        public XamlProjectResolver(IReadOnlyDictionary<string, string> globalProperties)
+            : this(profile: null, globalProperties)
+        {
+        }
+
+        public XamlFrameworkProfile Profile => _profile;
 
         public async Task<bool> IsSupportedProjectAsync(string projectPath, CancellationToken cancellationToken = default)
         {
@@ -52,7 +63,7 @@ namespace WinUiXaml.Workspace
                 ObjectDisposedException.ThrowIf(_disposed, this);
                 if (!_eligibleProjects.TryGetValue(key, out task!))
                 {
-                    task = Task.Run(() => WinUiProjectEligibility.Evaluate(key, _globalProperties, _shutdown.Token), _shutdown.Token);
+                    task = Task.Run(() => WinUiProjectEligibility.Evaluate(_profile, key, _globalProperties, _shutdown.Token), _shutdown.Token);
                     _eligibleProjects[key] = task;
                     TrackLoad(task);
                     _ = task.ContinueWith(completed =>
@@ -245,7 +256,8 @@ namespace WinUiXaml.Workspace
                     compilation.SourceModule.ReferencedAssemblySymbols,
                     frameworkProject.XamlFiles,
                     frameworkProject.ApplicationDefinitionPath,
-                    frameworkProject.UnresolvedProjectReferences);
+                    frameworkProject.UnresolvedProjectReferences,
+                    usesMinimalMetadataFallback: frameworkProject.UsesMinimalMetadataFallback);
             }
 
             // Unsupported custom project systems retain the existing authoritative path.
@@ -451,7 +463,7 @@ namespace WinUiXaml.Workspace
                 }
 
                 var task = Task.Run(
-                    () => MsBuildFrameworkProject.Load(key, _globalProperties, _shutdown.Token),
+                    () => MsBuildFrameworkProject.Load(key, _profile, _globalProperties, _shutdown.Token),
                     _shutdown.Token);
                 TrackLoad(task);
                 _frameworkProjects[key] = task;
