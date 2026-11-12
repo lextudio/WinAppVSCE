@@ -119,6 +119,9 @@ jobs:
       - name: Push
         shell: pwsh
         run: |
-          dotnet nuget push "nupkg/*.nupkg" --source https://nuget.pkg.github.com/lextudio/index.json `
-            --api-key ${{ secrets.GITHUB_TOKEN }} --skip-duplicate
-          if ($LASTEXITCODE -ne 0) { throw "dotnet nuget push failed ($LASTEXITCODE)." }
+          # An explicit path: the quoted glob is not expanded by `dotnet nuget push` on Windows ("File does not exist").
+          foreach ($package in Get-ChildItem nupkg -Filter *.nupkg) {
+            dotnet nuget push $package.FullName --source https://nuget.pkg.github.com/lextudio/index.json `
+              --api-key ${{ secrets.GITHUB_TOKEN }} --skip-duplicate
+            if ($LASTEXITCODE -ne 0) { throw "dotnet nuget push failed ($LASTEXITCODE) for $($package.Name)." }
+          }
