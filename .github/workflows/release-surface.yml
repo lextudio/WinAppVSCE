@@ -39,6 +39,17 @@ jobs:
             "$name=$($result.$name)" >> $env:GITHUB_OUTPUT
           }
 
+      # Hosted images ship only the runtime framework package; the surface's bootstrapper also needs Main/Singleton/DDLM
+      # and otherwise exits 0x80670016 (the same step the upstream previewer CI uses). Any machine that runs the surface
+      # needs this runtime too. Windows PowerShell: pwsh's Appx module is unreliable here.
+      - name: Install Windows App Runtime 2.5
+        shell: powershell
+        run: |
+          $exe = "$env:RUNNER_TEMP\wasdk-runtime.exe"
+          Invoke-WebRequest "https://aka.ms/windowsappsdk/2.5/latest/windowsappruntimeinstall-x64.exe" -OutFile $exe -UseBasicParsing
+          & $exe --quiet --force
+          if ($LASTEXITCODE -ne 0) { throw "Windows App Runtime installer exited $LASTEXITCODE" }
+
       # The surface must run from a short path (Windows App SDK bootstrap fails with 'filename too long').
       - name: Smoke test the x64 surface
         shell: pwsh

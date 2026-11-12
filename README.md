@@ -25,6 +25,10 @@ Surface/win-x64/    bundled surface, x64
 Surface/win-arm64/  bundled surface, ARM64
 ```
 
+**Prerequisite:** the Windows App Runtime must be installed on the machine that runs a surface (its bootstrapper needs the
+Main, Singleton and DDLM packages, not only the framework package). Without it the surface exits `0x80670016`.
+Install it with `windowsappruntimeinstall-x64.exe --quiet --force` from <https://aka.ms/windowsappsdk/2.5/latest/windowsappruntimeinstall-x64.exe>.
+
 Run a surface from a **short** directory (for example `C:\odsurf`): a deep path fails in the Windows App SDK bootstrap with
 `filename too long`. The wire protocol is in `surface/protocol/README.md`.
 
