@@ -108,6 +108,8 @@ jobs:
           # On the first publish the package does not exist yet: gh prints the 404 body on stdout, so keep only numeric ids.
           $ids = @(gh api "/orgs/lextudio/packages/nuget/$id/versions" --paginate --jq ".[] | select(.name == `"$version`") | .id" 2>$null)
           if ($LASTEXITCODE -ne 0) { $ids = @(); "No existing $id package; nothing to replace." }
+          # The step's exit code is the last native command's, so clear the handled 404 here. A failed delete below still fails the step.
+          $global:LASTEXITCODE = 0
           $ids = @($ids | Where-Object { "$_" -match '^\d+$' })
           foreach ($versionId in $ids) {
             "Deleting existing $id $version (version id $versionId)"
