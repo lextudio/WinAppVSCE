@@ -1,8 +1,0 @@
-# VS Code drive session artifacts
-logs/
-.drive-extensions/
-.drive-udd-*/
-.queue-*/
-
-# Keep the directory itself
-!logs/.gitkeep

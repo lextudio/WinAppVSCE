@@ -1,0 +1,35 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <!-- Packs the output of surface/Build-Payload.ps1 for OpenDevelop. Nothing is compiled here: the three
+       directories below are passed in by .github/workflows/release-surface.yml, and the package is only
+       a folder layout:
+         HostSDK/    the installed layout the provisioner expects (sources, compiled SurfaceProvisioner, engine.stamp)
+         Surface/win-x64/, Surface/win-arm64/   the bundled (WASDK 2.2.0 by default) surface per architecture -->
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+    <PackageId>LeXtudio.WinUISurface</PackageId>
+    <VersionPrefix>0.1.0</VersionPrefix>
+    <Authors>LeXtudio; Microsoft Corporation; nmetulev</Authors>
+    <Description>The WinUI Surface renderer and SurfaceProvisioner from microsoft/WinAppVSCE (previewer PR 323), repackaged for the OpenDevelop WinUI designer. MIT.</Description>
+    <PackageLicenseExpression>MIT</PackageLicenseExpression>
+    <PackageProjectUrl>https://github.com/lextudio/WinAppVSCE</PackageProjectUrl>
+    <RepositoryUrl>https://github.com/lextudio/WinAppVSCE</RepositoryUrl>
+    <IsPackable>true</IsPackable>
+    <IncludeBuildOutput>false</IncludeBuildOutput>
+    <IncludeSymbols>false</IncludeSymbols>
+    <GenerateAssemblyInfo>false</GenerateAssemblyInfo>
+    <EnableDefaultItems>false</EnableDefaultItems>
+    <SuppressDependenciesWhenPacking>true</SuppressDependenciesWhenPacking>
+    <!-- A content-only package has no lib/ or ref/ assets. -->
+    <NoWarn>$(NoWarn);NU5128;NU5100</NoWarn>
+  </PropertyGroup>
+  <ItemGroup>
+    <None Include="$(HostSdkDir)\**\*" Pack="true" PackagePath="HostSDK" Condition="'$(HostSdkDir)' != ''" />
+    <None Include="$(SurfaceX64Dir)\**\*" Pack="true" PackagePath="Surface\win-x64" Condition="'$(SurfaceX64Dir)' != ''" />
+    <None Include="$(SurfaceArm64Dir)\**\*" Pack="true" PackagePath="Surface\win-arm64" Condition="'$(SurfaceArm64Dir)' != ''" />
+    <None Include="..\..\LICENSE" Pack="true" PackagePath="" />
+  </ItemGroup>
+  <Target Name="RequirePayload" BeforeTargets="Pack">
+    <Error Condition="'$(HostSdkDir)' == '' Or '$(SurfaceX64Dir)' == '' Or '$(SurfaceArm64Dir)' == ''"
+           Text="Pass -p:HostSdkDir, -p:SurfaceX64Dir and -p:SurfaceArm64Dir (the output of surface/Build-Payload.ps1)." />
+  </Target>
+</Project>

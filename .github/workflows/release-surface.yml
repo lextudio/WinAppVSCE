@@ -1,0 +1,108 @@
+# Builds the Surface payload (x64 and ARM64), proves the x64 surface renders without an IDE, packs
+# LeXtudio.WinUISurface and, on request, publishes it to GitHub Packages for OpenDevelop.
+name: Release (Surface)
+
+on:
+  push:
+    branches: [opendevelop]
+    tags: ['surface-v*']
+  workflow_dispatch:
+    inputs:
+      publish:
+        description: "Also publish the package to GitHub Packages, replacing the same version (opendevelop branch only)"
+        type: boolean
+        default: false
+
+permissions:
+  contents: read
+  packages: write
+
+jobs:
+  build:
+    name: Build and smoke test
+    runs-on: windows-2025
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/setup-dotnet@v5
+        with:
+          global-json-file: global.json
+
+      # Builds Surface and PreviewHost for win-x64 and win-arm64 and stages the HostSDK layout.
+      - name: Build payload
+        id: payload
+        shell: pwsh
+        run: |
+          $result = @(./surface/Build-Payload.ps1 -Configuration Release) | Select-Object -Last 1
+          foreach ($name in 'SurfaceOutDir', 'SurfaceArm64OutDir', 'HostSdkStageDir', 'EngineStamp') {
+            if (-not $result.$name) { throw "Build-Payload.ps1 did not report $name." }
+            "$name=$($result.$name)" >> $env:GITHUB_OUTPUT
+          }
+
+      # The surface must run from a short path (Windows App SDK bootstrap fails with 'filename too long').
+      - name: Smoke test the x64 surface
+        shell: pwsh
+        run: |
+          Copy-Item '${{ steps.payload.outputs.SurfaceOutDir }}' C:\odsurf -Recurse
+          ./surface/Smoke-Surface.ps1 -SurfaceExe C:\odsurf\Surface.exe -OutPng "$env:RUNNER_TEMP\smoke.png"
+
+      - name: Pack
+        shell: pwsh
+        run: |
+          $version = if ($env:GITHUB_REF -like 'refs/tags/surface-v*') { "$env:GITHUB_REF_NAME".Substring('surface-v'.Length) } else { $null }
+          $extra = if ($version) { @("-p:PackageVersion=$version") } else { @() }
+          dotnet pack surface/Package/LeXtudio.WinUISurface.csproj -c Release -o nupkg `
+            "-p:SurfaceX64Dir=${{ steps.payload.outputs.SurfaceOutDir }}" `
+            "-p:SurfaceArm64Dir=${{ steps.payload.outputs.SurfaceArm64OutDir }}" `
+            "-p:HostSdkDir=${{ steps.payload.outputs.HostSdkStageDir }}" @extra
+          if ($LASTEXITCODE -ne 0) { throw "dotnet pack failed ($LASTEXITCODE)." }
+          Get-ChildItem nupkg | Format-Table Name, @{ n = 'MB'; e = { [math]::Round($_.Length / 1MB, 1) } }
+
+      - uses: actions/upload-artifact@v7
+        with:
+          name: nuget-packages
+          path: nupkg/*.nupkg
+          if-no-files-found: error
+
+  publish:
+    name: Publish GitHub Packages
+    needs: build
+    if: >-
+      (github.event_name == 'push' && startsWith(github.ref, 'refs/tags/surface-v')) ||
+      (github.event_name == 'workflow_dispatch' && inputs.publish && github.ref == 'refs/heads/opendevelop')
+    runs-on: windows-2025
+    steps:
+      - uses: actions/download-artifact@v8
+        with:
+          name: nuget-packages
+          path: nupkg
+
+      # GitHub Packages versions are immutable and --skip-duplicate keeps the first upload, so a republish at the same
+      # version would silently ship the old bits. Delete exactly this package at exactly this version, then push.
+      - name: Replace same-version package
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          $package = Get-ChildItem nupkg/*.nupkg | Select-Object -First 1
+          Add-Type -AssemblyName System.IO.Compression.FileSystem
+          $archive = [IO.Compression.ZipFile]::OpenRead($package.FullName)
+          try {
+            $entry = @($archive.Entries | Where-Object Name -like '*.nuspec')[0]
+            [xml]$nuspec = [IO.StreamReader]::new($entry.Open()).ReadToEnd()
+            $id = $nuspec.package.metadata.id
+            $version = $nuspec.package.metadata.version
+          } finally { $archive.Dispose() }
+          "Publishing $id $version"
+          $ids = gh api "/orgs/lextudio/packages/nuget/$id/versions" --paginate --jq ".[] | select(.name == `"$version`") | .id" 2>$null
+          foreach ($versionId in $ids) {
+            "Deleting existing $id $version (version id $versionId)"
+            gh api -X DELETE "/orgs/lextudio/packages/nuget/$id/versions/$versionId"
+          }
+
+      - name: Push
+        shell: pwsh
+        run: |
+          dotnet nuget push "nupkg/*.nupkg" --source https://nuget.pkg.github.com/lextudio/index.json `
+            --api-key ${{ secrets.GITHUB_TOKEN }} --skip-duplicate
+          if ($LASTEXITCODE -ne 0) { throw "dotnet nuget push failed ($LASTEXITCODE)." }
