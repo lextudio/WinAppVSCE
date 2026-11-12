@@ -81,6 +81,20 @@ runs, and there is no app `Window`.
 | Storyboards begun by code-behind (`Begin()` in `Loaded`, etc.) | Not started; shows the initial frame |
 | `{x:Bind}` values, resources added in `App.xaml.cs` | Placeholders (see sample data) |
 
+### Compiled page (opt-in `compiledType`)
+
+`LoadXaml`, `UpdateXaml` and `EnterNative` accept an optional `compiledType`: the full name of a page or control class
+in the `--user-dll` assembly (for example `MyApp.MainPage`). The surface then creates that class instead of parsing the
+`xaml` text, so the generated `InitializeComponent` loads the compiled XBF and the generated binding code runs: `{x:Bind}`
+shows real values (measured: `{x:Bind Greeting}` renders the property, not a placeholder). The page is the **last build**
+of the project, not the editor buffer, so an edited page needs a rebuild before it changes. `""`/`null` clears it; absent
+keeps the current value (like `documentPath`). Failures are an ordinary `Error` with phase `activation`.
+
+The user project must not run its own WinAppSDK bootstrap in the host: with the unpackaged auto-initializer enabled
+(`WindowsPackageType=None`) the module initializer re-initializes COM when the assembly loads and every XAML object then
+fails with `0x8001010E` (even plain markup). Set `WindowsAppSdkBootstrapInitialize` and
+`WindowsAppSdkUndockedRegFreeWinRTInitialize` to `false` (the error message says so).
+
 The approximated cases are logged once per render as `FIDELITY:` lines in
 `preview.log` (`Surface/FidelityNotes.cs`). The off-screen frame-stream path
 (`RenderTargetBitmap`) is not used by the VS preview; it cannot capture

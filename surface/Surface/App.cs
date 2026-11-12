@@ -330,6 +330,8 @@ public partial class App : Application, IXamlMetadataProvider
     private readonly List<IXamlMetadataProvider> _providers = new();
     private IXamlMetadataProvider? _userProvider;
     private Assembly? _userAssembly;
+    /// <summary>The assembly named by <c>--user-dll</c>, once loaded (null when none).</summary>
+    public Assembly? UserAssembly => _userAssembly;
     private RenderHost? _renderHost;
     private FrameServer? _server;
 

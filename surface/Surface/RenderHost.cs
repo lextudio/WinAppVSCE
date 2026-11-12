@@ -215,6 +215,12 @@ internal sealed class RenderHost
     public string? DocumentPath { get; set; }
 
     /// <summary>
+    /// Full name of a page class in the user assembly to instantiate instead of parsing the markup (the client's <c>compiledType</c>
+    /// field). The compiled page shows the last build of the project, including generated <c>{x:Bind}</c> code. Null: parse the markup.
+    /// </summary>
+    public string? CompiledPageType { get; set; }
+
+    /// <summary>
     /// Rule 7 (T2) predicate for <see cref="XamlCleaner"/>: true when the runtime provider chain that
     /// <see cref="XamlReader.Load"/> consults (<see cref="Application.Current"/>, which implements
     /// <see cref="IXamlMetadataProvider"/>) maps <paramref name="fullName"/>. Because this is the exact
@@ -321,6 +327,10 @@ internal sealed class RenderHost
         LastNewerTypes = Array.Empty<string>();
         LastDesignSizedRoot = new HashSet<string>();
         LastDesignValuesSkipped = false;
+        if (CompiledPageType is { Length: > 0 } compiledType)
+        {
+            return TryCreateCompiledPage(compiledType);
+        }
         try
         {
             // P1 (non-page classification): a structurally non-designable root — a ResourceDictionary
@@ -508,6 +518,47 @@ internal sealed class RenderHost
         catch (Exception ex)
         {
             return (null, "parse", Flatten(ex), null, null);
+        }
+    }
+
+    /// <summary>
+    /// Instantiates <paramref name="typeName"/> from the user assembly. Its constructor runs the generated InitializeComponent, which loads
+    /// the compiled XBF and wires the generated binding code. Failures keep the render path's <c>(phase, message)</c> shape.
+    /// </summary>
+    private (FrameworkElement? root, string? phase, string? message, int? line, int? column) TryCreateCompiledPage(string typeName)
+    {
+        try
+        {
+            var assembly = (Application.Current as App)?.UserAssembly;
+            if (assembly is null)
+            {
+                return (null, "activation", "No user assembly is loaded (start the surface with --user-dll) so a compiled page cannot be created.", null, null);
+            }
+            var type = assembly.GetType(typeName, throwOnError: false);
+            if (type is null)
+            {
+                return (null, "activation", $"The user assembly '{assembly.GetName().Name}' has no type '{typeName}'.", null, null);
+            }
+            var instance = Activator.CreateInstance(type);
+            if (instance is not FrameworkElement element)
+            {
+                return (null, NonPagePhase, $"'{typeName}' is not a FrameworkElement, so it is not a designable page.", null, null);
+            }
+            return (element, null, null, null, null);
+        }
+        catch (Exception ex)
+        {
+            var inner = ex is System.Reflection.TargetInvocationException { InnerException: { } i } ? i : ex;
+            App.Log($"Compiled page activation error: {inner}");
+            // 0x8001010E (RPC_E_WRONG_THREAD) from the very first XAML object: measured to be caused by the project's own unpackaged
+            // WinAppSDK auto-initializer, which runs as a module initializer when the user assembly loads and re-initializes COM on
+            // this thread (even plain markup then fails to load). It is switched off in the project file.
+            var hint = inner is System.Runtime.InteropServices.COMException { HResult: unchecked((int)0x8001010E) }
+                ? " The project's own WinAppSDK bootstrap initializer probably ran inside the preview host; set " +
+                  "<WindowsAppSdkBootstrapInitialize>false</WindowsAppSdkBootstrapInitialize> and " +
+                  "<WindowsAppSdkUndockedRegFreeWinRTInitialize>false</WindowsAppSdkUndockedRegFreeWinRTInitialize> in the project and rebuild."
+                : "";
+            return (null, "activation", Flatten(inner) + hint, null, null);
         }
     }
 

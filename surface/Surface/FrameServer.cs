@@ -907,6 +907,13 @@ internal sealed class FrameServer
         {
             _host.SampleData = v.GetBoolean();
         }
+        // Optional "compiledType": the full name of a page class in the --user-dll assembly. When present the page is instantiated
+        // (its generated InitializeComponent loads the compiled XBF, so {x:Bind} and generated code run) instead of parsing the
+        // "xaml" text. "" or null clears it; absent keeps the current value.
+        if (root.TryGetProperty("compiledType", out var ct))
+        {
+            _host.CompiledPageType = ct.ValueKind == JsonValueKind.String && !string.IsNullOrEmpty(ct.GetString()) ? ct.GetString() : null;
+        }
         if (root.TryGetProperty("documentPath", out var d))
         {
             // "" or null: no file (an unsaved document), so no project types; absent keeps the current path.
