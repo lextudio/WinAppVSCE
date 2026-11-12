@@ -75,6 +75,40 @@ jobs:
           path: nupkg/*.nupkg
           if-no-files-found: error
 
+  # The package carries a native ARM64 surface; the build job only smoke-tests the x64 one. This runs the ARM64 surface on a real ARM64
+  # runner, from the packed package, so what is checked is what ships. It does not gate `publish`: runner availability should not hold
+  # up a release, but a red result here means the ARM64 slice is unverified.
+  smoke-arm64:
+    name: Smoke test the ARM64 surface
+    needs: build
+    runs-on: windows-11-arm
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/download-artifact@v8
+        with:
+          name: nuget-packages
+          path: nupkg
+
+      - name: Install Windows App Runtime 2.5 (ARM64)
+        shell: powershell
+        run: |
+          $exe = "$env:RUNNER_TEMP\wasdk-runtime.exe"
+          Invoke-WebRequest "https://aka.ms/windowsappsdk/2.5/latest/windowsappruntimeinstall-arm64.exe" -OutFile $exe -UseBasicParsing
+          & $exe --quiet --force
+          if ($LASTEXITCODE -ne 0) { throw "Windows App Runtime installer exited $LASTEXITCODE" }
+
+      - name: Smoke test the ARM64 surface from the package
+        shell: pwsh
+        run: |
+          "Architecture: $env:PROCESSOR_ARCHITECTURE"
+          $package = Get-ChildItem nupkg -Filter *.nupkg | Select-Object -First 1
+          Copy-Item $package.FullName "$env:RUNNER_TEMP\package.zip"
+          Expand-Archive "$env:RUNNER_TEMP\package.zip" -DestinationPath "$env:RUNNER_TEMP\package"
+          # The surface must run from a short path (Windows App SDK bootstrap fails with 'filename too long').
+          Copy-Item "$env:RUNNER_TEMP\package\Surface\win-arm64" C:\odsurf -Recurse
+          ./surface/Smoke-Surface.ps1 -SurfaceExe C:\odsurf\Surface.exe -OutPng "$env:RUNNER_TEMP\smoke-arm64.png"
+
   publish:
     name: Publish GitHub Packages
     needs: build
