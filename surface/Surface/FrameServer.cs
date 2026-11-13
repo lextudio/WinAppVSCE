@@ -518,6 +518,29 @@ internal sealed class FrameServer
                 break;
             }
 
+            case "DescribeElement":
+            {
+                // The reflected properties of one element of the last described frame (path as in the frame tree), without selecting
+                // anything and without native mode: name, category, type, current value, read-only flag and the closed set of values.
+                string? dpath = root.TryGetProperty("path", out var dp) && dp.ValueKind == JsonValueKind.String ? dp.GetString() : null;
+                bool queued = _uiDispatcher.TryEnqueue(() =>
+                {
+                    var page = RenderHost.LastRoot;
+                    var element = page is null || dpath is null ? null : FrameTree.Resolve(page, dpath);
+                    if (element is null)
+                    {
+                        Send(new { type = "ElementDescribed", path = dpath, found = false, props = Array.Empty<object>() });
+                        return;
+                    }
+                    var rows = PreviewInspector.Describe(element)
+                        .Select(pi => new { name = pi.Name, category = pi.Category, type = pi.TypeName, value = pi.Value, readOnly = pi.ReadOnly, options = pi.Options })
+                        .ToList();
+                    Send(new { type = "ElementDescribed", path = dpath, found = true, elementType = element.GetType().Name, props = rows });
+                });
+                if (!queued) App.Log("DescribeElement: UI dispatcher rejected the request.");
+                break;
+            }
+
             case "PickAt":
             {
                 // TEST-ONLY (bug D3 regression): headless equivalent of a design-mode pointer click at (x,y) in
@@ -624,7 +647,15 @@ internal sealed class FrameServer
                 dipWidth = result.DipWidth,
                 dipHeight = result.DipHeight,
                 data = Convert.ToBase64String(result.Image!),
-                tree = RenderHost.LastTree?.Select(n => new { path = n.Path, type = n.Type, name = n.Name, x = n.X, y = n.Y, w = n.W, h = n.H }),
+                tree = RenderHost.LastTree?.Select(n => new { path = n.Path, type = n.Type, name = n.Name, x = n.X, y = n.Y, w = n.W, h = n.H,
+                layout = n.Layout is null ? null : new {
+                    margin = new[] { n.Layout.MarginLeft, n.Layout.MarginTop, n.Layout.MarginRight, n.Layout.MarginBottom },
+                    parent = n.Layout.ParentKind, row = n.Layout.Row, column = n.Layout.Column, rowSpan = n.Layout.RowSpan,
+                    columnSpan = n.Layout.ColumnSpan, canvasLeft = n.Layout.CanvasLeft, canvasTop = n.Layout.CanvasTop,
+                    zIndex = n.Layout.ZIndex, orientation = n.Layout.Orientation,
+                    rows = n.Layout.Rows?.Select(r => new { offset = r.Offset, size = r.Size }),
+                    columns = n.Layout.Columns?.Select(c => new { offset = c.Offset, size = c.Size }),
+                } }),
                 missingKeys = RenderHost.LastMissingKeys,
                 unmappedTypes = RenderHost.LastUnmappedTypes,
                 placeholderTypes = RenderHost.LastPlaceholderTypes,

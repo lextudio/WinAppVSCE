@@ -226,6 +226,9 @@ internal sealed class RenderHost
     /// <summary>The element tree of the last frame when <see cref="DescribeTree"/> is on; null otherwise.</summary>
     public static IReadOnlyList<FrameTreeNode>? LastTree { get; private set; }
 
+    /// <summary>The page root of the last described frame (null when <see cref="DescribeTree"/> is off), for <c>DescribeElement</c>.</summary>
+    public static FrameworkElement? LastRoot { get; private set; }
+
     /// <summary>
     /// Rule 7 (T2) predicate for <see cref="XamlCleaner"/>: true when the runtime provider chain that
     /// <see cref="XamlReader.Load"/> consults (<see cref="Application.Current"/>, which implements
@@ -736,6 +739,7 @@ internal sealed class RenderHost
 
         // Optional element tree of the laid-out page (the client's "describe" field), read before the tree is released.
         LastTree = DescribeTree ? FrameTree.Describe(root, host) : null;
+        LastRoot = DescribeTree ? root : null;   // kept so DescribeElement can read an element's properties after the frame
 
         // ---------------- capture phase ----------------
         // Supersample: render the tree at the requested output density (canvas DIP × outputScale) so

@@ -7,7 +7,7 @@
   <PropertyGroup>
     <TargetFramework>net10.0</TargetFramework>
     <PackageId>LeXtudio.WinUISurface</PackageId>
-    <VersionPrefix>0.3.0</VersionPrefix>
+    <VersionPrefix>0.4.0</VersionPrefix>
     <Authors>LeXtudio; Microsoft Corporation; nmetulev</Authors>
     <Description>The WinUI Surface renderer and SurfaceProvisioner from microsoft/WinAppVSCE (previewer PR 323), repackaged for the OpenDevelop WinUI designer. MIT.</Description>
     <PackageLicenseExpression>MIT</PackageLicenseExpression>
