@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using System.IO;
+using System.Linq;
 using System.Net;
 using System.Net.Sockets;
 using System.Runtime.ExceptionServices;
@@ -623,6 +624,7 @@ internal sealed class FrameServer
                 dipWidth = result.DipWidth,
                 dipHeight = result.DipHeight,
                 data = Convert.ToBase64String(result.Image!),
+                tree = RenderHost.LastTree?.Select(n => new { path = n.Path, type = n.Type, name = n.Name, x = n.X, y = n.Y, w = n.W, h = n.H }),
                 missingKeys = RenderHost.LastMissingKeys,
                 unmappedTypes = RenderHost.LastUnmappedTypes,
                 placeholderTypes = RenderHost.LastPlaceholderTypes,
@@ -910,6 +912,12 @@ internal sealed class FrameServer
         // Optional "compiledType": the full name of a page class in the --user-dll assembly. When present the page is instantiated
         // (its generated InitializeComponent loads the compiled XBF, so {x:Bind} and generated code run) instead of parsing the
         // "xaml" text. "" or null clears it; absent keeps the current value.
+        // Optional "describe": true makes each Frame carry "tree", the authored elements with paths and bounds in frame DIPs, so a
+        // client can hit-test and draw selection from a frame without native mode. Sticky; absent keeps the current setting.
+        if (root.TryGetProperty("describe", out var ds) && ds.ValueKind is JsonValueKind.True or JsonValueKind.False)
+        {
+            _host.DescribeTree = ds.GetBoolean();
+        }
         if (root.TryGetProperty("compiledType", out var ct))
         {
             _host.CompiledPageType = ct.ValueKind == JsonValueKind.String && !string.IsNullOrEmpty(ct.GetString()) ? ct.GetString() : null;

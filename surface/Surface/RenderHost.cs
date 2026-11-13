@@ -220,6 +220,12 @@ internal sealed class RenderHost
     /// </summary>
     public string? CompiledPageType { get; set; }
 
+    /// <summary>When true (the client's <c>describe</c> field), each frame also reports the authored element tree with bounds.</summary>
+    public bool DescribeTree { get; set; }
+
+    /// <summary>The element tree of the last frame when <see cref="DescribeTree"/> is on; null otherwise.</summary>
+    public static IReadOnlyList<FrameTreeNode>? LastTree { get; private set; }
+
     /// <summary>
     /// Rule 7 (T2) predicate for <see cref="XamlCleaner"/>: true when the runtime provider chain that
     /// <see cref="XamlReader.Load"/> consults (<see cref="Application.Current"/>, which implements
@@ -727,6 +733,9 @@ internal sealed class RenderHost
         await PumpFramesAsync(4);
 
         if (timings is not null) timings.LayoutMs = ElapsedMs(tLayout);
+
+        // Optional element tree of the laid-out page (the client's "describe" field), read before the tree is released.
+        LastTree = DescribeTree ? FrameTree.Describe(root, host) : null;
 
         // ---------------- capture phase ----------------
         // Supersample: render the tree at the requested output density (canvas DIP × outputScale) so
