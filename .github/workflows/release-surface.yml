@@ -60,8 +60,12 @@ jobs:
       - name: Pack
         shell: pwsh
         run: |
-          $version = if ($env:GITHUB_REF -like 'refs/tags/surface-v*') { "$env:GITHUB_REF_NAME".Substring('surface-v'.Length) } else { $null }
-          $extra = if ($version) { @("-p:PackageVersion=$version") } else { @() }
+          # Array splatting needs an array: "if (...) { @('x') } else { @() }" returns a *string* for the
+          # single-item case, and "@extra" then splits it into characters (MSB1001 "Unknown switch").
+          $extra = @()
+          if ($env:GITHUB_REF -like 'refs/tags/surface-v*') {
+            $extra = @("-p:PackageVersion=" + "$env:GITHUB_REF_NAME".Substring('surface-v'.Length))
+          }
           dotnet pack surface/Package/LeXtudio.WinUISurface.csproj -c Release -o nupkg `
             "-p:SurfaceX64Dir=${{ steps.payload.outputs.SurfaceOutDir }}" `
             "-p:SurfaceArm64Dir=${{ steps.payload.outputs.SurfaceArm64OutDir }}" `
