@@ -30,11 +30,28 @@ namespace Surface;
 /// </summary>
 internal static class BindingEvaluator
 {
-    /// <summary>Attributes whose target is textual (or a value that formats safely into text).</summary>
+    /// <summary>
+    /// Attributes the evaluator may substitute. Text targets take any value as-is. The typed names are bool, number
+    /// and enum properties whose XAML parser conversion accepts the text <see cref="Format"/> produces ("True",
+    /// "120.5", "Visible"); they are listed by name because the target type is not resolved from the element type
+    /// here - an unknown property name is simply not in this set, and a value that would not parse is left to the
+    /// cleaner rather than guessed at.
+    /// </summary>
     private static readonly HashSet<string> EvaluableAttributes = new(StringComparer.Ordinal)
     {
+        // Text.
         "Text", "Content", "Header", "PlaceholderText", "Title", "Description", "Label", "Subtitle",
-        "ToolTipService.ToolTip"
+        "ToolTipService.ToolTip",
+        // Boolean.
+        "IsEnabled", "IsReadOnly", "IsChecked", "IsHitTestVisible", "IsTabStop", "IsExpanded", "IsSelected",
+        "IsOn", "IsDropDownOpen", "IsOpen", "IsIndeterminate", "AcceptsReturn",
+        // Number.
+        "Width", "Height", "MinWidth", "MinHeight", "MaxWidth", "MaxHeight", "Opacity", "FontSize", "Value",
+        "Minimum", "Maximum", "SelectedIndex", "TabIndex", "CharacterSpacing", "LineHeight", "StrokeThickness",
+        "Canvas.Left", "Canvas.Top", "Canvas.ZIndex", "Grid.Row", "Grid.Column", "Grid.RowSpan", "Grid.ColumnSpan",
+        // Enum.
+        "Visibility", "HorizontalAlignment", "VerticalAlignment", "TextAlignment", "FlowDirection", "Orientation",
+        "TextWrapping", "TextTrimming", "TextDecorations"
     };
 
     private static readonly XNamespace XamlNamespace = "http://schemas.microsoft.com/winfx/2006/xaml";
@@ -581,11 +598,15 @@ namespace __SurfaceBindings {{
         return prefixes;
     }
 
+    /// <summary>
+    /// The text the XAML parser would accept for the target: the XAML parser parses numbers and enums with the
+    /// invariant culture, so format them that way rather than with the user's culture (120,5 is not a valid Width).
+    /// </summary>
     private static string Format(object value) => value switch
     {
         string text => text,
         bool flag => flag ? "True" : "False",
-        IFormattable formattable => formattable.ToString(null, CultureInfo.CurrentCulture),
+        IFormattable formattable => formattable.ToString(null, CultureInfo.InvariantCulture),
         _ => value.ToString() ?? ""
     };
 

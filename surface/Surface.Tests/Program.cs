@@ -38,6 +38,14 @@ namespace Surface.Tests.Fixtures
 
         public string? Nothing => null;
 
+        public bool IsBusy => false;
+
+        public double BoxWidth => 120.5;
+
+        public int Row => 2;
+
+        public Visibility State => Visibility.Visible;
+
         public BindChild Child { get; } = new();
 
         public string Shout(string text) => text.ToUpperInvariant() + "!";
@@ -200,6 +208,14 @@ namespace Surface.Tests
                 Attr(Eval("<TextBlock " + BindNs + " Text=\"{x:Bind Nothing}\"/>"), "Text") is null);
             Eq("non-text attribute untouched", "{x:Bind Title}",
                 Attr(Eval("<TextBlock " + BindNs + " Tag=\"{x:Bind Title}\"/>"), "Tag"));
+            Eq("bool target", "False",
+                Attr(Eval("<TextBlock " + BindNs + " IsEnabled=\"{x:Bind IsBusy}\"/>"), "IsEnabled"));
+            Eq("number target uses the invariant culture", "120.5",
+                Attr(Eval("<Border " + BindNs + " Width=\"{x:Bind BoxWidth}\"/>"), "Width"));
+            Eq("enum target", "Visible",
+                Attr(Eval("<TextBlock " + BindNs + " Visibility=\"{x:Bind State}\"/>"), "Visibility"));
+            Eq("attached number target", "2",
+                Attr(Eval("<TextBlock " + BindNs + " Grid.Row=\"{x:Bind Row}\"/>"), "Grid.Row"));
             var template = Eval("<StackPanel " + BindNs
                 + "><StackPanel.Resources><DataTemplate x:Key=\"T\"><TextBlock Text=\"{x:Bind Title}\"/></DataTemplate>"
                 + "</StackPanel.Resources></StackPanel>");
