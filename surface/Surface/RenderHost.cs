@@ -220,6 +220,54 @@ internal sealed class RenderHost
     /// </summary>
     public string? CompiledPageType { get; set; }
 
+    /// <summary>
+    /// The client's <c>evaluateBindings</c> field: render the markup but evaluate each <c>{x:Bind}</c> against an
+    /// instance of <see cref="DesignPageType"/> and substitute the value (see <see cref="BindingEvaluator"/>), so a
+    /// binding edit shows a real design-time value without a project build. Mutually exclusive with
+    /// <see cref="CompiledPageType"/>, which runs generated code instead.
+    /// </summary>
+    public bool EvaluateBindings { get; set; }
+
+    /// <summary>The page class used as design-time state for <see cref="EvaluateBindings"/> (the document's <c>x:Class</c>).</summary>
+    public string? DesignPageType { get; set; }
+
+    private object? designInstance;
+    private string? designInstanceType;
+
+    /// <summary>
+    /// The page instance whose members the evaluator reads. Constructed once per host under the app's design-mode
+    /// contract and never shown; null when the project assembly or type is unavailable, in which case the markup
+    /// keeps the cleaner's placeholder behaviour.
+    /// </summary>
+    private object? DesignInstance(string typeName)
+    {
+        if (designInstance is not null && designInstanceType == typeName)
+        {
+            return designInstance;
+        }
+        designInstance = null;
+        designInstanceType = null;
+        try
+        {
+            var assembly = (Application.Current as App)?.UserAssembly;
+            var type = assembly?.GetType(typeName, throwOnError: false);
+            if (type is null)
+            {
+                App.Log($"LIVEBIND: no type '{typeName}' in the user assembly.");
+                return null;
+            }
+            designInstance = Activator.CreateInstance(type);
+            designInstanceType = typeName;
+            App.Log($"LIVEBIND: design instance '{typeName}' created.");
+            return designInstance;
+        }
+        catch (Exception ex)
+        {
+            var inner = ex is System.Reflection.TargetInvocationException { InnerException: { } i } ? i : ex;
+            App.Log($"LIVEBIND: design instance '{typeName}' failed: {Flatten(inner)}");
+            return null;
+        }
+    }
     /// <summary>When true (the client's <c>describe</c> field), each frame also reports the authored element tree with bounds.</summary>
     public bool DescribeTree { get; set; }
 
@@ -339,6 +387,13 @@ internal sealed class RenderHost
         if (CompiledPageType is { Length: > 0 } compiledType)
         {
             return TryCreateCompiledPage(compiledType);
+        }
+        // Markup render with design-time {x:Bind} evaluation against one page instance. A binding that cannot be
+        // evaluated is skipped inside the evaluator, so this never turns a renderable page into a failure.
+        if (EvaluateBindings && DesignPageType is { Length: > 0 } designType
+            && DesignInstance(designType) is { } page)
+        {
+            rawXaml = BindingEvaluator.Apply(rawXaml, page, (Application.Current as App)?.UserAssembly, Program.UserDllPath, App.Log);
         }
         try
         {

@@ -1,6 +1,7 @@
 using System.Xml.Linq;
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Controls;
+using Microsoft.UI.Xaml.Data;
 
 namespace Surface
 {
@@ -27,6 +28,33 @@ namespace Surface.Tests.Fixtures
 
     public class CustomUserControl : UserControl
     {
+    }
+
+    // LiveBindings fixtures: a page-shaped object whose members the evaluator reads by reflection or compiles
+    // against, and a converter the document can declare in its own resources.
+    public class BindPage
+    {
+        public string Title => "Bound from code-behind";
+
+        public string? Nothing => null;
+
+        public BindChild Child { get; } = new();
+
+        public string Shout(string text) => text.ToUpperInvariant() + "!";
+    }
+
+    public class BindChild
+    {
+        public string Name => "Root";
+    }
+
+    public sealed class TestSuffixConverter : IValueConverter
+    {
+        public object Convert(object value, Type targetType, object parameter, string language)
+            => $"{value} ({parameter})";
+
+        public object ConvertBack(object value, Type targetType, object parameter, string language)
+            => throw new NotSupportedException();
     }
 
     // A resolvable custom control: its "Closed" is a PROPERTY (kept), its "Pinged" is an EVENT (stripped).
@@ -132,6 +160,53 @@ namespace Surface.Tests
         private static int s_fail;
         private static readonly List<string> s_failures = new();
 
+        private const string BindNs =
+            "xmlns=\"" + PresNs + "\" xmlns:x=\"" + XNs + "\" xmlns:f=\"using:Surface.Tests.Fixtures\"";
+
+        /// <summary>
+        /// The design-time {x:Bind} evaluator: member paths, compiled function bindings, converters declared in the
+        /// document, fallback/removal rules, and the cases it must leave alone (non-text attributes, templates).
+        /// </summary>
+        private static void LiveBindings()
+        {
+            var page = new Surface.Tests.Fixtures.BindPage();
+            var logs = new List<string>();
+            var assembly = typeof(Surface.Tests.Fixtures.BindPage).Assembly;
+            string Eval(string xaml) => BindingEvaluator.Apply(xaml, page, assembly, assembly.Location, logs.Add);
+            static string? Attr(string xaml, string name) => (string?)XDocument.Parse(xaml).Root?.Attribute(name);
+
+            Eq("member path", "Bound from code-behind",
+                Attr(Eval("<TextBlock " + BindNs + " Text=\"{x:Bind Title}\"/>"), "Text"));
+            Eq("nested member path", "Root",
+                Attr(Eval("<TextBlock " + BindNs + " Text=\"{x:Bind Child.Name}\"/>"), "Text"));
+            Eq("function binding", "BOUND FROM CODE-BEHIND!",
+                Attr(Eval("<TextBlock " + BindNs + " Text=\"{x:Bind Shout(Title)}\"/>"), "Text"));
+            Eq("nested function binding", "BOUND FROM CODE-BEHIND!!",
+                Attr(Eval("<TextBlock " + BindNs + " Text=\"{x:Bind Shout(Shout(Title))}\"/>"), "Text"));
+            var converted = Eval("<StackPanel " + BindNs
+                + "><StackPanel.Resources><f:TestSuffixConverter x:Key=\"Suffix\"/></StackPanel.Resources>"
+                + "<TextBlock Text=\"{x:Bind Title, Converter={StaticResource Suffix}, ConverterParameter=design}\"/>"
+                + "</StackPanel>");
+            Eq("converter declared in the document", "Bound from code-behind (design)",
+                (string?)XDocument.Parse(converted).Descendants().First(e => e.Name.LocalName == "TextBlock").Attribute("Text"));
+
+            Eq("an unknown member is left for the cleaner", "{x:Bind Nope}",
+                Attr(Eval("<TextBlock " + BindNs + " Text=\"{x:Bind Nope}\"/>"), "Text"));
+            Eq("fallback value for a null result", "n/a",
+                Attr(Eval("<TextBlock " + BindNs + " Text=\"{x:Bind Nothing, FallbackValue='n/a'}\"/>"), "Text"));
+            Eq("target-null value", "(none)",
+                Attr(Eval("<TextBlock " + BindNs + " Text=\"{x:Bind Nothing, TargetNullValue='(none)'}\"/>"), "Text"));
+            Check("a null result with no fallback clears the attribute",
+                Attr(Eval("<TextBlock " + BindNs + " Text=\"{x:Bind Nothing}\"/>"), "Text") is null);
+            Eq("non-text attribute untouched", "{x:Bind Title}",
+                Attr(Eval("<TextBlock " + BindNs + " Tag=\"{x:Bind Title}\"/>"), "Tag"));
+            var template = Eval("<StackPanel " + BindNs
+                + "><StackPanel.Resources><DataTemplate x:Key=\"T\"><TextBlock Text=\"{x:Bind Title}\"/></DataTemplate>"
+                + "</StackPanel.Resources></StackPanel>");
+            Check("template content untouched", template.Contains("{x:Bind Title}", StringComparison.Ordinal));
+            Check("log reports the evaluation", logs.Any(l => l.StartsWith("LIVEBIND: evaluated 1", StringComparison.Ordinal)));
+        }
+
         private static int Main()
         {
             Run("Robustness", Robustness);
@@ -164,6 +239,7 @@ namespace Surface.Tests
             Run("XAML error text", ErrorText);
             Run("XAML error positions map to the user's file", ErrorPositionMapping);
             Run("Zoom anchoring", ZoomAnchoring);
+            Run("Live {x:Bind} evaluation", LiveBindings);
 
             foreach (var f in s_failures)
             {

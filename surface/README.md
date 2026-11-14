@@ -79,7 +79,7 @@ runs, and there is no app `Window`.
 | Control-template animations (`ProgressRing`, indeterminate `ProgressBar`, visual-state transitions) | Faithful, animating |
 | Window backdrop (`Window.SystemBackdrop` Mica/DesktopAcrylic) behind a page with no opaque background | Approximated: the preview canvas paints `ApplicationPageBackgroundThemeBrush` (no wallpaper tint) |
 | Storyboards begun by code-behind (`Begin()` in `Loaded`, etc.) | Not started; shows the initial frame |
-| `{x:Bind}` values, resources added in `App.xaml.cs` | Placeholders (see sample data) |
+| `{x:Bind}` values, resources added in `App.xaml.cs` | Placeholders by default (see sample data); the opt-in `evaluateBindings` render option evaluates them against a design-time page instance |
 
 ### Compiled page (opt-in `compiledType`)
 
@@ -94,6 +94,29 @@ The user project must not run its own WinAppSDK bootstrap in the host: with the 
 (`WindowsPackageType=None`) the module initializer re-initializes COM when the assembly loads and every XAML object then
 fails with `0x8001010E` (even plain markup). Set `WindowsAppSdkBootstrapInitialize` and
 `WindowsAppSdkUndockedRegFreeWinRTInitialize` to `false` (the error message says so).
+
+### Live design-time bindings (opt-in `evaluateBindings` + `designType`)
+
+`LoadXaml`, `UpdateXaml` and `EnterNative` also accept `evaluateBindings: true` with `designType`, the page class the
+document names in `x:Class`. The surface still parses the `xaml` text, but first evaluates each `{x:Bind}` against one
+instance of `designType` (constructed once from the `--user-dll` assembly, never shown) and substitutes the value, so an
+edited binding shows a real design-time value without a project build.
+
+- member paths (`{x:Bind Title}`, `{x:Bind ViewModel.Name}`) are read by reflection;
+- function and static bindings (`{x:Bind Shout(Title)}`, `{x:Bind local:Helper.Fmt(Title)}`) are compiled with Roslyn
+  against the project assembly, with the page instance in scope and XAML namespace prefixes mapped to CLR namespaces;
+- a `Converter={StaticResource key}` is resolved from the document's own resource declaration (instantiated there, so a
+  XAML-only converter edit is live too), then from the page instance's resources;
+- `ConverterParameter`/`ConverterLanguage`, `FallbackValue` and `TargetNullValue` are applied. `{x:Bind}` has no
+  `StringFormat` (the XAML compiler rejects it), so a format comes from a converter or a function;
+- text-valued attributes are evaluated; attached-property targets, template content and two-way semantics are left to
+  `XamlCleaner` (placeholders/sample data). A binding the evaluator cannot honour is skipped and logged as
+  `LIVEBIND: ...`, never turned into a render failure.
+
+`evaluateBindings` is mutually exclusive with `compiledType` (which runs generated code instead); `""`/`null` clears
+`designType` and absent keeps both, like `documentPath`. The instance is created under the project's existing
+`WINUI_XAML_DESIGN_MODE` contract, so the app remains responsible for seeding design-time singletons; a page whose
+constructor throws is logged and the render falls back to placeholders.
 
 The approximated cases are logged once per render as `FIDELITY:` lines in
 `preview.log` (`Surface/FidelityNotes.cs`). The off-screen frame-stream path

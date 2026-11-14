@@ -953,7 +953,17 @@ internal sealed class FrameServer
         {
             _host.CompiledPageType = ct.ValueKind == JsonValueKind.String && !string.IsNullOrEmpty(ct.GetString()) ? ct.GetString() : null;
         }
-        if (root.TryGetProperty("documentPath", out var d))
+        // Optional "evaluateBindings"/"designType": render the "xaml" markup but evaluate each {x:Bind} against an
+        // instance of "designType" (the document's x:Class) instead of stripping it. Mutually exclusive with
+        // "compiledType", which runs generated code instead. Sticky; absent keeps the current setting.
+        if (root.TryGetProperty("evaluateBindings", out var eb) && eb.ValueKind is JsonValueKind.True or JsonValueKind.False)
+        {
+            _host.EvaluateBindings = eb.GetBoolean();
+        }
+        if (root.TryGetProperty("designType", out var dt) && dt.ValueKind == JsonValueKind.String)
+        {
+            _host.DesignPageType = string.IsNullOrEmpty(dt.GetString()) ? null : dt.GetString();
+        }        if (root.TryGetProperty("documentPath", out var d))
         {
             // "" or null: no file (an unsaved document), so no project types; absent keeps the current path.
             if (d.ValueKind == JsonValueKind.String)
