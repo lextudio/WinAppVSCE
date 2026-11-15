@@ -444,3 +444,4 @@ schemas/*.xsd
 
 # winapp workspace (SDK packages cache)
 .winapp/
+tmp/

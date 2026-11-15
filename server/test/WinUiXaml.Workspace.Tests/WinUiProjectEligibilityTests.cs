@@ -117,7 +117,7 @@ public sealed class WinUiProjectEligibilityTests
     }
 
     [Fact]
-    public void UnoProfileAcceptsUnoWinUiWithoutAcceptingProGpu()
+    public void UnoProfileRequiresUno7WithoutAcceptingProGpu()
     {
         var root = Path.Combine(Path.GetTempPath(), "uno-eligibility-" + Guid.NewGuid().ToString("N"));
         Directory.CreateDirectory(root);
@@ -127,9 +127,22 @@ public sealed class WinUiProjectEligibilityTests
             File.WriteAllText(project, """
                 <Project Sdk="Microsoft.NET.Sdk">
                   <PropertyGroup><TargetFramework>net10.0</TargetFramework></PropertyGroup>
-                  <ItemGroup><PackageReference Include="Uno.WinUI" Version="5.0.0" ExcludeAssets="all" /></ItemGroup>
+                  <ItemGroup><PackageReference Include="Uno.WinUI" Version="6.5.0" ExcludeAssets="all" /></ItemGroup>
                 </Project>
                 """);
+
+            WriteUnoAssets(root, "6.5.0");
+
+            Assert.False(WinUiProjectEligibility.Evaluate(
+                XamlFrameworkProfile.Uno, project, new Dictionary<string, string>(), CancellationToken.None));
+
+            File.WriteAllText(project, """
+                <Project Sdk="Microsoft.NET.Sdk">
+                  <PropertyGroup><TargetFramework>net10.0</TargetFramework></PropertyGroup>
+                  <ItemGroup><PackageReference Include="Uno.WinUI" Version="7.0.22" ExcludeAssets="all" /></ItemGroup>
+                </Project>
+                """);
+            WriteUnoAssets(root, "7.0.22");
 
             Assert.True(WinUiProjectEligibility.Evaluate(
                 XamlFrameworkProfile.Uno, project, new Dictionary<string, string>(), CancellationToken.None));
@@ -137,7 +150,7 @@ public sealed class WinUiProjectEligibilityTests
             File.WriteAllText(project, """
                 <Project Sdk="Microsoft.NET.Sdk">
                   <PropertyGroup><TargetFramework>net10.0</TargetFramework><UseProGpuWinUI>true</UseProGpuWinUI></PropertyGroup>
-                  <ItemGroup><PackageReference Include="Uno.WinUI" Version="5.0.0" ExcludeAssets="all" /></ItemGroup>
+                  <ItemGroup><PackageReference Include="Uno.WinUI" Version="7.0.22" ExcludeAssets="all" /></ItemGroup>
                 </Project>
                 """);
             Assert.False(WinUiProjectEligibility.Evaluate(
@@ -147,6 +160,36 @@ public sealed class WinUiProjectEligibilityTests
         {
             Directory.Delete(root, recursive: true);
         }
+    }
+
+    [Theory]
+    [InlineData("6.5.0", false)]
+    [InlineData("7.0.0", true)]
+    [InlineData("7.0.0-preview.1", true)]
+    [InlineData("7.0.0+build.1", true)]
+    public void UnoProfileReadsTheResolvedUnoWinUiMajorVersion(string version, bool expected)
+    {
+        var root = Path.Combine(Path.GetTempPath(), "uno-assets-" + Guid.NewGuid().ToString("N"));
+        Directory.CreateDirectory(root);
+        try
+        {
+            var assets = Path.Combine(root, "project.assets.json");
+            File.WriteAllText(assets, $$"""{ "libraries": { "Uno.WinUI/{{version}}": { "type": "package" } } }""");
+
+            Assert.Equal(expected, XamlFrameworkProfile.UsesUno7(assets));
+        }
+        finally
+        {
+            Directory.Delete(root, recursive: true);
+        }
+    }
+
+    static void WriteUnoAssets(string projectDirectory, string version)
+    {
+        var obj = Path.Combine(projectDirectory, "obj");
+        Directory.CreateDirectory(obj);
+        File.WriteAllText(Path.Combine(obj, "project.assets.json"),
+            $$"""{ "libraries": { "Uno.WinUI/{{version}}": { "type": "package" } } }""");
     }
 
     [Fact]

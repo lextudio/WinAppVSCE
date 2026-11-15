@@ -1,6 +1,8 @@
 using System;
 using System.Collections.Generic;
+using System.IO;
 using System.Linq;
+using System.Text.Json;
 using System.Xml.Linq;
 
 namespace WinUiXaml.Workspace;
@@ -34,7 +36,7 @@ public sealed class XamlFrameworkProfile
 
     public static XamlFrameworkProfile Uno { get; } = new(
         "uno",
-        "Not supported for this project. Only Uno Platform WinUI projects are supported at this time.");
+        "Not supported for this project. OpenDevelop requires Uno Platform 7.x; update global.json, restore, and build the project.");
 
     public static XamlFrameworkProfile Wpf { get; } = new(
         "wpf",
@@ -100,7 +102,52 @@ public sealed class XamlFrameworkProfile
         "librewpf" => evaluation.UseWpf,
         "progpu" => evaluation.IsProGpuWinUiProject,
         "uno" => !evaluation.IsProGpuWinUiProject && evaluation.PackageReferences.Any(
-            package => string.Equals(package, "Uno.WinUI", StringComparison.OrdinalIgnoreCase)),
+            package => string.Equals(package, "Uno.WinUI", StringComparison.OrdinalIgnoreCase)) &&
+            UsesUno7(evaluation.ProjectAssetsFile),
         _ => false,
     };
+
+    // A project file normally carries only "Uno.Sdk"; the resolved package graph is the
+    // authoritative version identity. Do not allow the language server to load a 6.x closure
+    // from the user's NuGet cache: Uno 7's binaries are not compatible with it.
+    internal static bool UsesUno7(string? projectAssetsFile)
+    {
+        if (string.IsNullOrEmpty(projectAssetsFile) || !File.Exists(projectAssetsFile))
+        {
+            return false;
+        }
+
+        try
+        {
+            using var document = JsonDocument.Parse(File.ReadAllText(projectAssetsFile));
+            if (!document.RootElement.TryGetProperty("libraries", out var libraries))
+            {
+                return false;
+            }
+
+            const string prefix = "Uno.WinUI/";
+            foreach (var library in libraries.EnumerateObject())
+            {
+                if (!library.Name.StartsWith(prefix, StringComparison.OrdinalIgnoreCase))
+                {
+                    continue;
+                }
+
+                var versionText = library.Name[prefix.Length..];
+                var suffix = versionText.IndexOfAny(['-', '+']);
+                if (suffix >= 0)
+                {
+                    versionText = versionText[..suffix];
+                }
+
+                return Version.TryParse(versionText, out var version) && version.Major == 7;
+            }
+        }
+        catch (JsonException)
+        {
+            // An incomplete restore has no safe framework closure to serve.
+        }
+
+        return false;
+    }
 }
