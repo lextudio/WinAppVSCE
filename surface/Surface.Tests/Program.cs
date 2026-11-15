@@ -65,6 +65,20 @@ namespace Surface.Tests.Fixtures
             => throw new NotSupportedException();
     }
 
+    /// <summary>A converter with settings the document declares, so the evaluator's attribute application shows.</summary>
+    public sealed class ParameterizedConverter : IValueConverter
+    {
+        public string Prefix { get; set; } = "?";
+
+        public int Repeat { get; set; } = 1;
+
+        public object Convert(object value, Type targetType, object parameter, string language)
+            => Prefix + string.Concat(Enumerable.Repeat(value?.ToString() ?? "", Repeat));
+
+        public object ConvertBack(object value, Type targetType, object parameter, string language)
+            => throw new NotSupportedException();
+    }
+
     // A resolvable custom control: its "Closed" is a PROPERTY (kept), its "Pinged" is an EVENT (stripped).
     public class Widget : Control
     {
@@ -197,6 +211,12 @@ namespace Surface.Tests
                 + "</StackPanel>");
             Eq("converter declared in the document", "Bound from code-behind (design)",
                 (string?)XDocument.Parse(converted).Descendants().First(e => e.Name.LocalName == "TextBlock").Attribute("Text"));
+            var parameterized = Eval("<StackPanel " + BindNs
+                + "><StackPanel.Resources><f:ParameterizedConverter x:Key=\"P\" Prefix=\"[\" Repeat=\"2\"/></StackPanel.Resources>"
+                + "<TextBlock Text=\"{x:Bind Title, Converter={StaticResource P}}\"/>"
+                + "</StackPanel>");
+            Eq("converter settings declared in the document", "[Bound from code-behindBound from code-behind",
+                (string?)XDocument.Parse(parameterized).Descendants().First(e => e.Name.LocalName == "TextBlock").Attribute("Text"));
 
             Eq("an unknown member is left for the cleaner", "{x:Bind Nope}",
                 Attr(Eval("<TextBlock " + BindNs + " Text=\"{x:Bind Nope}\"/>"), "Text"));

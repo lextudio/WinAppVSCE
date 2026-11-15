@@ -526,6 +526,7 @@ namespace __SurfaceBindings {{
                 error = $"'{fullName}' is not an IValueConverter";
                 return false;
             }
+            ApplyDeclarationAttributes(created, declaration, log);
             converter = valueConverter;
             log($"LIVEBIND: converter '{fullName}' created from markup");
             return true;
@@ -535,6 +536,41 @@ namespace __SurfaceBindings {{
             var inner = ex is TargetInvocationException { InnerException: { } i } ? i : ex;
             error = $"converter '{fullName}' could not be created: {inner.GetType().Name}: {inner.Message}";
             return false;
+        }
+    }
+
+    /// <summary>
+    /// Applies the declaration's own attributes to the object it created (a converter's <c>Parameter</c>-like settings),
+    /// e.g. <c>&lt;local:Fmt x:Key="Fmt" Prefix="["/&gt;</c>. Values use the invariant culture, matching XAML.
+    /// Unconvertible or unknown attributes are logged and skipped: a converter with its defaults still converts.
+    /// </summary>
+    private static void ApplyDeclarationAttributes(object created, XElement declaration, Action<string> log)
+    {
+        foreach (var attribute in declaration.Attributes())
+        {
+            if (attribute.IsNamespaceDeclaration || attribute.Name.Namespace == XamlNamespace)
+                continue;   // xmlns and x:Key/x:Name are not properties
+            var property = created.GetType().GetProperty(attribute.Name.LocalName,
+                BindingFlags.Public | BindingFlags.NonPublic | BindingFlags.Instance);
+            if (property is null || !property.CanWrite)
+            {
+                log($"LIVEBIND: converter has no settable '{attribute.Name.LocalName}'; ignored");
+                continue;
+            }
+            try
+            {
+                object? value;
+                if (property.PropertyType == typeof(string))
+                    value = attribute.Value;
+                else
+                    value = System.ComponentModel.TypeDescriptor.GetConverter(property.PropertyType)
+                        .ConvertFromInvariantString(attribute.Value);
+                property.SetValue(created, value);
+            }
+            catch (Exception ex)
+            {
+                log($"LIVEBIND: converter '{attribute.Name.LocalName}=\"{attribute.Value}\"' ignored: {ex.GetType().Name}");
+            }
         }
     }
 
