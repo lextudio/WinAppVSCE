@@ -2314,7 +2314,6 @@ public class XamlValidatorTests
     }
 
     [Theory]
-    [InlineData("x", "Class", "http://schemas.microsoft.com/winfx/2006/xaml")]
     [InlineData("d", "DesignInstance", "http://schemas.microsoft.com/expression/blend/2008")]
     [InlineData("mc", "Ignorable", "http://schemas.openxmlformats.org/markup-compatibility/2006")]
     public void UndeclaredStandardPrefix_SuggestsCanonicalNamespace(

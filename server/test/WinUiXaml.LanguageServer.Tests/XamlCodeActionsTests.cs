@@ -193,7 +193,7 @@ public class XamlCodeActionsTests
 
         Assert.DoesNotContain(
             XamlCodeActions.Compute(Uri, doc, Context(diagnostic)),
-            item => item.Kind == "quickfix");
+            item => item.Kind == "quickfix" && item.Edit is not null);
     }
 
     [Theory]

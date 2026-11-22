@@ -745,7 +745,31 @@ namespace WinUiXaml.Xaml
         {
             if (node is XamlElement el)
             {
-                Dictionary<string, string> effective = inherited;
+                // Simpler XAML / implicit namespaces: when a document's root element omits
+                // the standard xmlns declarations, inject the default WPF presentation
+                // namespace and the x: language namespace so the IDE treats the file the
+                // same as one that declares them explicitly.
+                Dictionary<string, string> workingInherited = inherited;
+                if (inherited.Count == 0)
+                {
+                    if (!inherited.ContainsKey(string.Empty))
+                    {
+                        workingInherited = new Dictionary<string, string>(inherited, StringComparer.Ordinal)
+                        {
+                            [string.Empty] = "http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+                        };
+                    }
+                    if (!workingInherited.ContainsKey("x"))
+                    {
+                        if (ReferenceEquals(workingInherited, inherited))
+                        {
+                            workingInherited = new Dictionary<string, string>(inherited, StringComparer.Ordinal);
+                        }
+                        workingInherited["x"] = "http://schemas.microsoft.com/winfx/2006/xaml";
+                    }
+                }
+
+                Dictionary<string, string> effective = workingInherited;
                 Dictionary<string, string>? local = null;
                 for (int i = 0; i < el.Attributes.Count; i++)
                 {
