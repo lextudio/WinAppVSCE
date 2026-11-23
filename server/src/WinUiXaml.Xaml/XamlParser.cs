@@ -21,11 +21,21 @@ namespace WinUiXaml.Xaml
         }
 
         /// <summary>Parses <paramref name="text"/> into a fully-linked <see cref="XamlDocument"/>.</summary>
-        public static XamlDocument Parse(string text)
+        public static XamlDocument Parse(string text) => Parse(text, implicitNamespaces: false);
+
+        /// <summary>
+        /// Parses <paramref name="text"/>. With <paramref name="implicitNamespaces"/> a document whose root omits the
+        /// xmlns declarations is read as if it declared the default WPF presentation namespace and the <c>x</c> language
+        /// namespace (Simpler XAML, a feature of the LibreWPF XAML source generator). Without it the document is read as
+        /// written, so a missing declaration is reported as it always was.
+        /// </summary>
+        public static XamlDocument Parse(string text, bool implicitNamespaces)
         {
-            var parser = new XamlParser(text ?? string.Empty);
+            var parser = new XamlParser(text ?? string.Empty) { _implicitNamespaces = implicitNamespaces };
             return parser.ParseDocument();
         }
+
+        private bool _implicitNamespaces;
 
         private XamlDocument ParseDocument()
         {
@@ -49,7 +59,7 @@ namespace WinUiXaml.Xaml
             var rootScope = new Dictionary<string, string>(StringComparer.Ordinal);
             for (int i = 0; i < contents.Count; i++)
             {
-                AssignScopes(contents[i], rootScope);
+                AssignScopes(contents[i], rootScope, _implicitNamespaces);
             }
 
             return doc;
@@ -741,7 +751,7 @@ namespace WinUiXaml.Xaml
             }
         }
 
-        private static void AssignScopes(XamlNode node, Dictionary<string, string> inherited)
+        private static void AssignScopes(XamlNode node, Dictionary<string, string> inherited, bool implicitNamespaces)
         {
             if (node is XamlElement el)
             {
@@ -750,7 +760,7 @@ namespace WinUiXaml.Xaml
                 // namespace and the x: language namespace so the IDE treats the file the
                 // same as one that declares them explicitly.
                 Dictionary<string, string> workingInherited = inherited;
-                if (inherited.Count == 0)
+                if (implicitNamespaces && inherited.Count == 0)
                 {
                     if (!inherited.ContainsKey(string.Empty))
                     {
@@ -793,7 +803,7 @@ namespace WinUiXaml.Xaml
 
                 for (int i = 0; i < el.Content.Count; i++)
                 {
-                    AssignScopes(el.Content[i], effective);
+                    AssignScopes(el.Content[i], effective, implicitNamespaces);
                 }
             }
             else
@@ -801,7 +811,7 @@ namespace WinUiXaml.Xaml
                 var children = node.ChildNodes;
                 for (int i = 0; i < children.Count; i++)
                 {
-                    AssignScopes(children[i], inherited);
+                    AssignScopes(children[i], inherited, implicitNamespaces);
                 }
             }
         }

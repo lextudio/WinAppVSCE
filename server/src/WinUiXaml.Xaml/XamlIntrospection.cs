@@ -42,11 +42,26 @@ namespace WinUiXaml.Xaml
             return false;
         }
 
-        /// <summary>Parses <paramref name="text"/> and returns its <c>x:Class</c> value, or null.</summary>
+        /// <summary>
+        /// Parses <paramref name="text"/> and returns its <c>x:Class</c> value, or null. A document that declares no
+        /// namespaces (Simpler XAML of the LibreWPF XAML source generator) is read once more with implicit namespaces, so its
+        /// <c>x:Class</c> is found too; only the class name is taken from that second reading, never a diagnostic.
+        /// </summary>
         public static string? GetClass(string text)
         {
             var document = XamlParser.Parse(text);
-            return TryGetClass(document, out var name, out _) ? name : null;
+            if (TryGetClass(document, out var name, out _))
+            {
+                return name;
+            }
+
+            // Most documents without an x:Class (resource dictionaries, code-less files) never mention one: do not parse them twice.
+            if (text is null || text.IndexOf("Class", System.StringComparison.Ordinal) < 0)
+            {
+                return null;
+            }
+
+            return TryGetClass(XamlParser.Parse(text, implicitNamespaces: true), out var implicitName, out _) ? implicitName : null;
         }
     }
 }

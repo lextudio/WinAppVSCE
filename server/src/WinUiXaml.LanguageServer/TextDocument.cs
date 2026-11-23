@@ -8,12 +8,12 @@ internal sealed class TextDocument
 {
     private readonly int[] _lineStarts;
 
-    public TextDocument(string uri, string text, int? version = null)
+    public TextDocument(string uri, string text, int? version = null, bool implicitNamespaces = false)
     {
         Uri = uri;
         Text = text;
         Version = version;
-        Parsed = XamlParser.Parse(text);
+        Parsed = XamlParser.Parse(text, implicitNamespaces);
         _lineStarts = ComputeLineStarts(text);
     }
 

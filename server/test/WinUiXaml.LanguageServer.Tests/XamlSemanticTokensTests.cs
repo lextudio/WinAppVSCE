@@ -307,14 +307,11 @@ public class XamlSemanticTokensTests
     }
 
     [Fact]
-    public void WithoutXmlnsDeclarations_ImplicitPresentationTypesAreDefaultLibrary()
+    public void WithoutXmlnsDeclarations_NothingIsDefaultLibrary()
     {
-        // With Simpler XAML / implicit namespaces, a document with no xmlns declarations
-        // is treated as if it declared the default presentation namespace, so unprefixed
-        // framework elements (Grid, Button) are still marked as default library.
+        // No xmlns in scope => no prefix resolves => the modifier is never emitted.
         var (_, tokens) = Parse("<Grid x:Name=\"Root\"><Button /></Grid>");
-        AssertDefaultLibrary(tokens, "Grid", "class");
-        AssertDefaultLibrary(tokens, "Button", "class");
+        Assert.All(tokens, t => Assert.False(IsDefaultLibrary(t)));
     }
 
     [Fact]

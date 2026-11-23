@@ -487,12 +487,16 @@ internal sealed partial class XamlLanguageServer
 
     // --- Document sync ------------------------------------------------------
 
+    /// <summary>The open document of <paramref name="uri"/>, as the server last parsed it.</summary>
+    internal TextDocument? GetOpenDocument(string uri) => _documents.TryGetValue(uri, out var document) ? document : null;
+
     private async Task DidOpenAsync(DidOpenTextDocumentParams p)
     {
         var doc = new TextDocument(
             p.TextDocument.Uri,
             p.TextDocument.Text,
-            p.TextDocument.Version);
+            p.TextDocument.Version,
+            ImplicitNamespacePolicy.IsEnabled(_resolver.Profile, LspUri.ToPath(p.TextDocument.Uri)));
         _documents[p.TextDocument.Uri] = doc;
         await PublishDiagnosticsAsync(doc).ConfigureAwait(false);
         WarmUp(doc.Uri);
@@ -511,7 +515,8 @@ internal sealed partial class XamlLanguageServer
         var doc = new TextDocument(
             p.TextDocument.Uri,
             text,
-            p.TextDocument.Version);
+            p.TextDocument.Version,
+            ImplicitNamespacePolicy.IsEnabled(_resolver.Profile, LspUri.ToPath(p.TextDocument.Uri)));
         _documents[p.TextDocument.Uri] = doc;
         if (!string.Equals(
             previous is null ? null : XamlIntrospection.GetClass(previous.Text),
