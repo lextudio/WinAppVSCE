@@ -37,6 +37,48 @@ public sealed class ImplicitNamespacePolicyTests : IDisposable
 
     private static bool Enabled(string path) => ImplicitNamespacePolicy.IsEnabled(XamlFrameworkProfile.LibreWpf, path);
 
+    private static bool ExpressionsOn(string path, XamlFrameworkProfile? profile = null) =>
+        ImplicitNamespacePolicy.ExpressionsEnabled(profile ?? XamlFrameworkProfile.LibreWpf, path);
+
+    [Fact]
+    public void CSharpExpressions_NeedTheXsgSwitch_AndFollowIt()
+    {
+        Assert.False(ExpressionsOn(Project("")));
+        Assert.False(ExpressionsOn(Project("<LibreWpfCSharpExpressions>true</LibreWpfCSharpExpressions>")));
+        Assert.False(ExpressionsOn(Project("<UseLibreWpfXamlSourceGenerator>false</UseLibreWpfXamlSourceGenerator>")));
+        Assert.True(ExpressionsOn(Project("<UseLibreWpfXamlSourceGenerator>true</UseLibreWpfXamlSourceGenerator>")));
+        Assert.False(ExpressionsOn(Project("<UseLibreWpfXamlSourceGenerator>true</UseLibreWpfXamlSourceGenerator><LibreWpfCSharpExpressions>false</LibreWpfCSharpExpressions>")));
+    }
+
+    [Fact]
+    public void CSharpExpressions_AreIndependentOfSimplerXaml()
+    {
+        var path = Project("<UseLibreWpfXamlSourceGenerator>true</UseLibreWpfXamlSourceGenerator><LibreWpfSimplerXaml>false</LibreWpfSimplerXaml>");
+        Assert.True(ExpressionsOn(path));
+        Assert.False(Enabled(path));
+    }
+
+    [Fact]
+    public void CSharpExpressions_AreOffForEveryOtherProfile_AndForAmbiguousOrMissingProjects()
+    {
+        var path = Project("<UseLibreWpfXamlSourceGenerator>true</UseLibreWpfXamlSourceGenerator>");
+        Assert.False(ExpressionsOn(path, XamlFrameworkProfile.WinUi));
+        File.WriteAllText(Path.Combine(Path.GetDirectoryName(path)!, "Other.csproj"), "<Project />");
+        Assert.False(ExpressionsOn(path));
+        Assert.False(ImplicitNamespacePolicy.ExpressionsEnabled(XamlFrameworkProfile.LibreWpf, null));
+    }
+
+    [Fact]
+    public void AnEditedProjectFile_ChangesTheExpressionsAnswer()
+    {
+        var path = Project("<UseLibreWpfXamlSourceGenerator>true</UseLibreWpfXamlSourceGenerator>");
+        Assert.True(ExpressionsOn(path));
+        var project = Path.Combine(Path.GetDirectoryName(path)!, "App.csproj");
+        File.WriteAllText(project, "<Project Sdk=\"LibreWPF.Sdk\"><PropertyGroup><UseLibreWpfXamlSourceGenerator>true</UseLibreWpfXamlSourceGenerator><LibreWpfCSharpExpressions>false</LibreWpfCSharpExpressions></PropertyGroup></Project>");
+        File.SetLastWriteTimeUtc(project, DateTime.UtcNow.AddMinutes(5));
+        Assert.False(ExpressionsOn(path));
+    }
+
     [Fact]
     public void ABamlProject_IsStrict()
     {

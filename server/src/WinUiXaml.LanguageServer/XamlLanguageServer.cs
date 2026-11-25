@@ -496,7 +496,8 @@ internal sealed partial class XamlLanguageServer
             p.TextDocument.Uri,
             p.TextDocument.Text,
             p.TextDocument.Version,
-            ImplicitNamespacePolicy.IsEnabled(_resolver.Profile, LspUri.ToPath(p.TextDocument.Uri)));
+            ImplicitNamespacePolicy.IsEnabled(_resolver.Profile, LspUri.ToPath(p.TextDocument.Uri)),
+            ImplicitNamespacePolicy.ExpressionsEnabled(_resolver.Profile, LspUri.ToPath(p.TextDocument.Uri)));
         _documents[p.TextDocument.Uri] = doc;
         await PublishDiagnosticsAsync(doc).ConfigureAwait(false);
         WarmUp(doc.Uri);
@@ -516,7 +517,8 @@ internal sealed partial class XamlLanguageServer
             p.TextDocument.Uri,
             text,
             p.TextDocument.Version,
-            ImplicitNamespacePolicy.IsEnabled(_resolver.Profile, LspUri.ToPath(p.TextDocument.Uri)));
+            ImplicitNamespacePolicy.IsEnabled(_resolver.Profile, LspUri.ToPath(p.TextDocument.Uri)),
+            ImplicitNamespacePolicy.ExpressionsEnabled(_resolver.Profile, LspUri.ToPath(p.TextDocument.Uri)));
         _documents[p.TextDocument.Uri] = doc;
         if (!string.Equals(
             previous is null ? null : XamlIntrospection.GetClass(previous.Text),

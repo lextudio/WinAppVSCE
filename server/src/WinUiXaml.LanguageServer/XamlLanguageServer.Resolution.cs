@@ -438,6 +438,13 @@ internal sealed partial class XamlLanguageServer
     /// <summary>Resolves the symbol under the caret for hover/definition, trying two pipelines in order</summary>
     private async Task<(ISymbol? Symbol, TextSpan? Span)> ResolveNamedSymbolAsync(TextDocumentPositionParams p)
     {
+        // A name inside a C# expression value ({Count + 1}): looked up where the generator looks (x:DataType, then the page).
+        var expressionHit = await ResolveExpressionSymbolAsync(p).ConfigureAwait(false);
+        if (expressionHit.Symbol != null)
+        {
+            return expressionHit;
+        }
+
         var typeHit = await ResolveTypeSymbolAtAsync(p).ConfigureAwait(false);
         if (typeHit.Symbol != null)
         {
@@ -446,6 +453,31 @@ internal sealed partial class XamlLanguageServer
 
         var (symbol, target) = await ResolveSymbolAtAsync(p).ConfigureAwait(false);
         return (symbol, target?.Span);
+    }
+
+    private async Task<(ISymbol? Symbol, TextSpan? Span)> ResolveExpressionSymbolAsync(TextDocumentPositionParams p)
+    {
+        if (!_documents.TryGetValue(p.TextDocument.Uri, out var doc))
+        {
+            return (null, null);
+        }
+
+        int offset = doc.OffsetAt(p.Position);
+        if (doc.Parsed.FindNode(Math.Max(0, offset - 1)) is null)
+        {
+            return (null, null);
+        }
+
+        var typeSystem = await GetTypeSystemAsync(p.TextDocument.Uri).ConfigureAwait(false);
+        if (typeSystem is null)
+        {
+            return (null, null);
+        }
+
+        var context = await GetContextAsync(p.TextDocument.Uri).ConfigureAwait(false);
+        return CompletionProvider.ResolveExpressionMemberAt(doc, offset, typeSystem, context?.Resolution.ClassSymbol) is { } hit
+            ? (hit.Symbol, hit.Span)
+            : (null, null);
     }
 
     /// <summary>Resolves the positional argument of an {x:Type TypeName} or {x:Static Owner.Member} markup extension to a symbol: the referenced type</summary>

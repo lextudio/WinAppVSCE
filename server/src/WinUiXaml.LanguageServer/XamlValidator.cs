@@ -192,6 +192,7 @@ internal static partial class XamlValidator
         }
 
         ValidateElement(element, elementType, doc, typeSystem, diagnostics, effectiveRoot, pageClass, effectiveStyleTarget, effectiveTemplateNeedsDataType, effectiveDataTypeSuggestion);
+        ValidateExpressions(element, null, elementType, doc, typeSystem, diagnostics, pageClass);
         ValidateResourceReferences(
             element,
             elementType,

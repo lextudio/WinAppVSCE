@@ -246,9 +246,10 @@ namespace WinUiXaml.Xaml
     {
         private readonly XamlNode[] _childNodes;
 
-        public XamlAttributeValue(char? quote, string text, TextSpan innerSpan, XamlMarkupExtension? markupExtension, TextSpan span)
+        public XamlAttributeValue(char? quote, string text, TextSpan innerSpan, XamlMarkupExtension? markupExtension, TextSpan span, bool isExpression = false)
             : base(span)
         {
+            IsExpression = isExpression;
             Quote = quote;
             Text = text;
             InnerSpan = innerSpan;
@@ -268,6 +269,9 @@ namespace WinUiXaml.Xaml
         public XamlMarkupExtension? MarkupExtension { get; }
 
         public bool IsMarkupExtension => MarkupExtension != null;
+
+        /// <summary>True for a C# expression (<see cref="XamlExpressionSyntax"/>), recognised only when the document is read with C# expressions on.</summary>
+        public bool IsExpression { get; }
 
         public override XamlNodeKind Kind => XamlNodeKind.AttributeValue;
 

@@ -112,14 +112,14 @@ namespace WinUiXaml.Workspace
         public WinUiSdkCapabilities Capabilities { get; }
 
         /// <summary>Builds a type system from a resolved XAML file's project context.</summary>
-        public static XamlTypeSystem FromResolution(XamlResolution resolution, XamlFrameworkProfile? profile = null)
+        public static XamlTypeSystem FromResolution(XamlResolution resolution, XamlFrameworkProfile? profile = null, bool? globalUsingTypes = null)
         {
             if (resolution is null)
             {
                 throw new ArgumentNullException(nameof(resolution));
             }
 
-            return FromCompilation(resolution.Compilation, resolution.ReferencedAssemblies, profile);
+            return FromCompilation(resolution.Compilation, resolution.ReferencedAssemblies, profile, globalUsingTypes);
         }
 
         /// <summary>Builds a type system, including the compilation's own assembly.</summary>
@@ -128,7 +128,7 @@ namespace WinUiXaml.Workspace
             => FromCompilation(compilation, referencedAssemblies, null);
 
         public static XamlTypeSystem FromCompilation(
-            Compilation compilation, ImmutableArray<IAssemblySymbol> referencedAssemblies, XamlFrameworkProfile? profile)
+            Compilation compilation, ImmutableArray<IAssemblySymbol> referencedAssemblies, XamlFrameworkProfile? profile, bool? globalUsingTypes = null)
         {
             if (compilation is null)
             {
@@ -147,7 +147,53 @@ namespace WinUiXaml.Workspace
             var xmlnsMap = BuildXmlnsMap(assemblies);
             var roots = profile?.Id is "wpf" or "librewpf" ? WpfPresentationRoots : WinUiPresentationRoots;
             AddConventionNamespaces(xmlnsMap, assemblies, roots);
-            return new XamlTypeSystem(compilation, assemblies, xmlnsMap, roots);
+            return new XamlTypeSystem(compilation, assemblies, xmlnsMap, roots)
+            {
+                GlobalUsingTypesEnabled = globalUsingTypes ?? string.Equals(profile?.Id, "librewpf", StringComparison.Ordinal),
+            };
+        }
+
+        /// <summary>
+        /// Simpler XAML as in .NET MAUI (LibreWPF XAML source generator): a type of a namespace the compilation's own <c>global using</c>
+        /// directives name is found in the presentation namespace without an xmlns declaration. Only the LibreWPF profile has it, and the language server
+        /// turns it on per project only when Simpler XAML is on (XSG); a BAML project keeps the strict lookup.
+        /// </summary>
+        public bool GlobalUsingTypesEnabled { get; private init; }
+
+        private IReadOnlyList<string>? _globalUsingNamespaces;
+
+        /// <summary>The namespaces of the compilation's <c>global using</c> directives (no alias, no <c>static</c>), in the order written.</summary>
+        public IReadOnlyList<string> GlobalUsingNamespaces => _globalUsingNamespaces ??= ReadGlobalUsingNamespaces(_compilation);
+
+        private static IReadOnlyList<string> ReadGlobalUsingNamespaces(Compilation compilation)
+        {
+            var result = new List<string>();
+            foreach (var tree in compilation.SyntaxTrees)
+            {
+                if (!tree.TryGetRoot(out var root) || root is not Microsoft.CodeAnalysis.CSharp.Syntax.CompilationUnitSyntax unit)
+                {
+                    continue;
+                }
+
+                foreach (var directive in unit.Usings)
+                {
+                    if (directive.GlobalKeyword.IsKind(Microsoft.CodeAnalysis.CSharp.SyntaxKind.None)
+                        || directive.Alias is not null
+                        || !directive.StaticKeyword.IsKind(Microsoft.CodeAnalysis.CSharp.SyntaxKind.None)
+                        || directive.Name is not { } name)
+                    {
+                        continue;
+                    }
+
+                    var text = name.ToString();
+                    if (!result.Contains(text))
+                    {
+                        result.Add(text);
+                    }
+                }
+            }
+
+            return result;
         }
 
         /// <summary>Resolves an element or attached-property owner to its type.</summary>
@@ -170,6 +216,17 @@ namespace WinUiXaml.Workspace
                 if (type is not null && IsUsableType(type))
                 {
                     return type;
+                }
+            }
+
+            if (GlobalUsingTypesEnabled && string.Equals(xmlnsUri, PresentationNamespace, StringComparison.Ordinal) && !localName.Contains('.'))
+            {
+                foreach (var ns in GlobalUsingNamespaces)
+                {
+                    if (_compilation.GetTypeByMetadataName(ns + "." + localName) is { } globalType && IsUsableType(globalType))
+                    {
+                        return globalType;
+                    }
                 }
             }
 
@@ -553,6 +610,22 @@ namespace WinUiXaml.Workspace
                     if (IsUsableClass(type) && seen.Add(type))
                     {
                         yield return type;
+                    }
+                }
+            }
+
+            // The project's own `global using` namespaces (Simpler XAML, LibreWPF profile): types the presentation namespace is read with.
+            if (GlobalUsingTypesEnabled && string.Equals(xmlnsUri, PresentationNamespace, StringComparison.Ordinal))
+            {
+                foreach (var name in GlobalUsingNamespaces)
+                {
+                    var globalNamespace = ResolveNamespace(_compilation.Assembly.GlobalNamespace, name);
+                    foreach (var type in globalNamespace?.GetTypeMembers() ?? ImmutableArray<INamedTypeSymbol>.Empty)
+                    {
+                        if (IsUsableClass(type) && seen.Add(type))
+                        {
+                            yield return type;
+                        }
                     }
                 }
             }

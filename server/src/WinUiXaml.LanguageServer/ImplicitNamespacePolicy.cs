@@ -18,9 +18,19 @@ namespace WinUiXaml.LanguageServer;
 /// </summary>
 internal static class ImplicitNamespacePolicy
 {
-    private static readonly ConcurrentDictionary<string, (string Stamp, bool Enabled)> s_cache = new(StringComparer.Ordinal);
+    private static readonly ConcurrentDictionary<(string Key, string Feature), (string Stamp, bool Enabled)> s_cache = new();
 
-    public static bool IsEnabled(XamlFrameworkProfile profile, string? documentPath)
+    /// <summary>
+    /// Whether the document's project compiles C# expressions (<c>{Count + 1}</c>, the syntax of .NET MAUI): the generator is on and
+    /// <c>LibreWpfCSharpExpressions</c> is not <c>false</c>. Same rules, file reading and cache as <see cref="IsEnabled"/>.
+    /// </summary>
+    public static bool ExpressionsEnabled(XamlFrameworkProfile profile, string? documentPath) =>
+        FeatureEnabled(profile, documentPath, "LibreWpfCSharpExpressions");
+
+    public static bool IsEnabled(XamlFrameworkProfile profile, string? documentPath) =>
+        FeatureEnabled(profile, documentPath, "LibreWpfSimplerXaml");
+
+    private static bool FeatureEnabled(XamlFrameworkProfile profile, string? documentPath, string featureName)
     {
         if (!string.Equals(profile.Id, "librewpf", StringComparison.Ordinal) || string.IsNullOrEmpty(documentPath))
         {
@@ -35,14 +45,14 @@ internal static class ImplicitNamespacePolicy
                 return false;
             }
 
-            var key = files[^1];
+            var key = (files[^1], featureName);
             var stamp = string.Join("|", files.Select(file => file + ":" + File.GetLastWriteTimeUtc(file).Ticks));
             if (s_cache.TryGetValue(key, out var cached) && cached.Stamp == stamp)
             {
                 return cached.Enabled;
             }
 
-            var enabled = Evaluate(files);
+            var enabled = Evaluate(files, featureName);
             s_cache[key] = (stamp, enabled);
             return enabled;
         }
@@ -96,7 +106,7 @@ internal static class ImplicitNamespacePolicy
         element.AncestorsAndSelf().Any(ancestor => ancestor.Attribute("Condition") is not null
             || ancestor.Name.LocalName is "Choose" or "When" or "Otherwise");
 
-    private static bool Evaluate(IReadOnlyList<string> files)
+    private static bool Evaluate(IReadOnlyList<string> files, string featureName)
     {
         string? overall = null;
         string? feature = null;
@@ -113,7 +123,7 @@ internal static class ImplicitNamespacePolicy
                 {
                     overall = element.Value.Trim();
                 }
-                else if (element.Name.LocalName == "LibreWpfSimplerXaml")
+                else if (element.Name.LocalName == featureName)
                 {
                     feature = element.Value.Trim();
                 }

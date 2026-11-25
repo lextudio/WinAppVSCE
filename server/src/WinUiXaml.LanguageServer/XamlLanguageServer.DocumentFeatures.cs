@@ -342,7 +342,7 @@ internal sealed partial class XamlLanguageServer
 
                 try
                 {
-                    fileDoc = new TextDocument(PathToUri(canonicalFile), text, null, ImplicitNamespacePolicy.IsEnabled(_resolver.Profile, canonicalFile));
+                    fileDoc = new TextDocument(PathToUri(canonicalFile), text, null, ImplicitNamespacePolicy.IsEnabled(_resolver.Profile, canonicalFile), ImplicitNamespacePolicy.ExpressionsEnabled(_resolver.Profile, canonicalFile));
                 }
                 catch (System.Exception ex)
                 {

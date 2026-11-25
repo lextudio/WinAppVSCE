@@ -29,13 +29,20 @@ namespace WinUiXaml.Xaml
         /// namespace (Simpler XAML, a feature of the LibreWPF XAML source generator). Without it the document is read as
         /// written, so a missing declaration is reported as it always was.
         /// </summary>
-        public static XamlDocument Parse(string text, bool implicitNamespaces)
+        public static XamlDocument Parse(string text, bool implicitNamespaces) => Parse(text, implicitNamespaces, csharpExpressions: false);
+
+        /// <summary>
+        /// As above, and with <paramref name="csharpExpressions"/> a braced attribute value that is not a markup extension
+        /// is a C# expression (<see cref="XamlExpressionSyntax"/>), not a markup extension with an unknown name.
+        /// </summary>
+        public static XamlDocument Parse(string text, bool implicitNamespaces, bool csharpExpressions)
         {
-            var parser = new XamlParser(text ?? string.Empty) { _implicitNamespaces = implicitNamespaces };
+            var parser = new XamlParser(text ?? string.Empty) { _implicitNamespaces = implicitNamespaces, _csharpExpressions = csharpExpressions };
             return parser.ParseDocument();
         }
 
         private bool _implicitNamespaces;
+        private bool _csharpExpressions;
 
         private XamlDocument ParseDocument()
         {
@@ -320,7 +327,7 @@ namespace WinUiXaml.Xaml
 
                 var innerSpan = TextSpan.FromBounds(innerStart, innerEnd);
                 var markup = TryParseMarkupExtension(inner, innerStart);
-                return new XamlAttributeValue(q, inner, innerSpan, markup, TextSpan.FromBounds(start, _pos));
+                return new XamlAttributeValue(q, inner, innerSpan, markup, TextSpan.FromBounds(start, _pos), IsExpressionValue(inner));
             }
 
             // Unquoted value: read until whitespace, '>', or '/>'.
@@ -346,14 +353,22 @@ namespace WinUiXaml.Xaml
             string unquoted = _text.Substring(vstart, vend - vstart);
             AddDiagnostic(XamlDiagnosticIds.UnquotedAttributeValue, "Attribute value should be quoted.", TextSpan.FromBounds(vstart, vend), XamlDiagnosticSeverity.Warning);
             var unquotedMarkup = TryParseMarkupExtension(unquoted, vstart);
-            return new XamlAttributeValue(null, unquoted, TextSpan.FromBounds(vstart, vend), unquotedMarkup, TextSpan.FromBounds(vstart, vend));
+            return new XamlAttributeValue(null, unquoted, TextSpan.FromBounds(vstart, vend), unquotedMarkup, TextSpan.FromBounds(vstart, vend), IsExpressionValue(unquoted));
         }
 
         // ---- markup extensions ------------------------------------------------------
 
+        private bool IsExpressionValue(string inner) => _csharpExpressions && XamlExpressionSyntax.IsExpression(inner);
+
         private XamlMarkupExtension? TryParseMarkupExtension(string inner, int innerStart)
         {
             if (inner.Length == 0 || inner[0] != '{')
+            {
+                return null;
+            }
+
+            // A C# expression ({Count + 1}, {= Foo}) is not a markup extension: reading it as one would colour and validate its first word as a type.
+            if (IsExpressionValue(inner))
             {
                 return null;
             }

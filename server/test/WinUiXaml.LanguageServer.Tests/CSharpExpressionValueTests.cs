@@ -8,9 +8,9 @@ using WinUiXaml.Xaml;
 namespace WinUiXaml.LanguageServer.Tests;
 
 /// <summary>
-/// <c>{cs: expression}</c> is a value of the LibreWPF XAML source generator (C# expressions): the generator compiles the expression
+/// A bare braced value such as <c>{Count + 1}</c>, <c>{= Foo}</c> or <c>{this.Foo}</c> is a C# expression in the syntax of .NET MAUI, which the LibreWPF XAML source generator follows: the generator compiles the expression
 /// and reports its own diagnostics (LWXSG0004 when the feature is off) through the build. The language service must stay out of
-/// the way: a <c>{cs:}</c> value is neither an unknown markup extension nor an undeclared prefix, in an old-style document
+/// the way: such a value is neither an unknown markup extension nor an undeclared prefix, in an old-style document
 /// (xmlns declared) and in a new-style one (implicit namespaces).
 /// </summary>
 public sealed class CSharpExpressionValueTests
@@ -56,9 +56,14 @@ public sealed class CSharpExpressionValueTests
     }
 
     [Theory]
-    [InlineData("{cs: &quot;ready&quot;}")]
-    [InlineData("{cs: Count + 1}")]
-    [InlineData("{cs: Count > 0 ? &quot;a&quot; : &quot;b&quot;}")]
+    [InlineData("{= 'ready'}")]
+    [InlineData("{Count + 1}")]
+    [InlineData("{Count}")]
+    [InlineData("{this.Count}")]
+    [InlineData("{.Count}")]
+    [InlineData("{Count GT 0 AND Count LT 9}")]
+    [InlineData("{= Count > 0 ? 'a' : 'b'}")]
+    [InlineData("{$'Total: {Count:F2}'}")]
     public void ACsValue_ProducesNoXamlDiagnostic_InNewAndOldStyleDocuments(string value)
     {
         Assert.Empty(Codes(NewStyle("Text=\"" + value + "\""), implicitNamespaces: true));
@@ -69,8 +74,8 @@ public sealed class CSharpExpressionValueTests
     [Fact]
     public void ACsValueDoesNotHideARealErrorOnTheSameElement()
     {
-        // An unknown property beside a {cs:} value is still reported, with exactly that one diagnostic.
-        var codes = Codes(NewStyle("Text=\"{cs: Count}\" Bogus=\"1\""), implicitNamespaces: true);
+        // An unknown property beside an expression value is still reported, with exactly that one diagnostic.
+        var codes = Codes(NewStyle("Text=\"{Count}\" Bogus=\"1\""), implicitNamespaces: true);
 
         Assert.Equal(new[] { "WXAML0003" }, codes);
     }

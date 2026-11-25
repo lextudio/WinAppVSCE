@@ -464,7 +464,7 @@ internal sealed partial class XamlLanguageServer
             ? latestContext.TypeSystem
             : _typeSystems.GetValue(
                 frameworkResolution.Compilation,
-                _ => XamlTypeSystem.FromResolution(frameworkResolution, _resolver.Profile));
+                _ => XamlTypeSystem.FromResolution(frameworkResolution, _resolver.Profile, ImplicitNamespacePolicy.IsEnabled(_resolver.Profile, frameworkResolution.XamlPath)));
         var frameworkContext = new XamlProjectContext(
             frameworkResolution,
             frameworkTypeSystem,
@@ -542,7 +542,7 @@ internal sealed partial class XamlLanguageServer
 
         var fullTypeSystem = _typeSystems.GetValue(
             fullResolution.Compilation,
-            _ => XamlTypeSystem.FromResolution(fullResolution, _resolver.Profile));
+            _ => XamlTypeSystem.FromResolution(fullResolution, _resolver.Profile, ImplicitNamespacePolicy.IsEnabled(_resolver.Profile, fullResolution.XamlPath)));
         _projectInputs.Register(
             fullResolution.ProjectPath,
             fullResolution.ProjectPaths,

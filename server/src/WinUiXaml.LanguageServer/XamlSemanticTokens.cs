@@ -10,7 +10,7 @@ namespace WinUiXaml.LanguageServer;
 internal static class XamlSemanticTokens
 {
     // The LSP legend. The encoded tokenType of each token is its index into this array; Initialize() advertises the same array so the client's mapping stays in lock-step with the encoder below.
-    public static readonly string[] TokenTypes = { "namespace", "class", "property", "macro", "parameter" };
+    public static readonly string[] TokenTypes = { "namespace", "class", "property", "macro", "parameter", "variable", "keyword", "string", "number", "operator", "method" };
 
     // The one emitted modifier: defaultLibrary (see ModDefaultLibrary). Advertised for a complete legend.
     public static readonly string[] TokenModifiers = { "defaultLibrary" };
@@ -20,6 +20,12 @@ internal static class XamlSemanticTokens
     private const int TypeProperty = 2;  // attribute / member names, incl. attached + property elements
     private const int TypeMacro = 3;     // markup-extension names: StaticResource, Binding
     private const int TypeParameter = 4; // markup-extension argument names: ElementName, Mode
+    private const int TypeVariable = 5;  // a name in a C# expression ({Count + 1}): a page member, a binding path or a static
+    private const int TypeKeyword = 6;   // this, new, true, null and the operator words' neighbours in a C# expression
+    private const int TypeString = 7;    // 'text' and the literal parts of $'...' in a C# expression
+    private const int TypeNumber = 8;
+    private const int TypeOperator = 9;  // + && ?? => and the operator words AND OR LT GT LTE GTE
+    private const int TypeMethod = 10;   // a name followed by '(' in a C# expression
 
     // Modifier bitmask: bit i set => TokenModifiers[i] applies.
     private const int ModDefaultLibrary = 1 << 0;
@@ -54,6 +60,11 @@ internal static class XamlSemanticTokens
                     AddName(attribute.Name, TypeProperty, ScopeOf(attribute), allowDefaultNamespace: false, tokens, doc);
                     break;
 
+                // A C# expression value ({Count + 1}): coloured as C#, with the MAUI differences (single quotes, operator words).
+                case XamlAttributeValue { IsExpression: true } expression:
+                    AddExpression(expression, tokens, doc);
+                    break;
+
                 // A markup-extension name binds like an element name: unprefixed => the default xmlns.
                 case XamlMarkupExtension extension:
                     AddName(extension.Name, TypeMacro, ScopeOf(extension), allowDefaultNamespace: true, tokens, doc);
@@ -66,6 +77,32 @@ internal static class XamlSemanticTokens
         }
 
         return tokens;
+    }
+
+    private static void AddExpression(XamlAttributeValue value, List<Token> tokens, TextDocument doc)
+    {
+        if (!XamlExpressionSyntax.TryLocate(value.Text, out var start, out var length))
+        {
+            return;
+        }
+
+        var code = XamlExpressionSyntax.Decode(value.Text, start, length, out var rawOffsets);
+        foreach (var token in XamlExpressionLexer.Lex(code))
+        {
+            int type = token.Kind switch
+            {
+                XamlExpressionLexer.Kind.Variable => TypeVariable,
+                XamlExpressionLexer.Kind.Property => TypeProperty,
+                XamlExpressionLexer.Kind.Method => TypeMethod,
+                XamlExpressionLexer.Kind.Keyword => TypeKeyword,
+                XamlExpressionLexer.Kind.String => TypeString,
+                XamlExpressionLexer.Kind.Number => TypeNumber,
+                _ => TypeOperator,
+            };
+            int from = value.InnerSpan.Start + rawOffsets[token.Start];
+            int to = value.InnerSpan.Start + rawOffsets[token.Start + token.Length];
+            AddSpan(TextSpan.FromBounds(from, to), type, 0, tokens, doc);
+        }
     }
 
     /// <summary>The <c>xmlns</c> scope of the nearest enclosing element (for prefix → URI resolution).</summary>

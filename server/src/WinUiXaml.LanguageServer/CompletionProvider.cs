@@ -39,6 +39,12 @@ internal static partial class CompletionProvider
         IReadOnlyCollection<string>? appResourceKeys,
         Action<string, string>? themeTypeResolutionObserver)
     {
+        // The caret inside a C# expression value ({Count + 1}): names are completed where the generator looks for them.
+        if (ProvideExpression(doc, offset, typeSystem, pageClass) is { } expressionItems)
+        {
+            return expressionItems;
+        }
+
         var ctx = Classify(doc.Text, offset);
         if (ctx.Kind == ContextKind.None)
         {
